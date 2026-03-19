@@ -27,7 +27,8 @@ app.get('/test', (req, res) => {
 // ✅ CREDO ORDER
 app.post('/api/credo-order', async (req, res) => {
   try {
-    const { products = [], customer } = req.body;
+    const products = req.body.products || [];
+const safeCustomer = req.body.customer || {};
 
     const safeCustomer = customer || {}; // 🔥 FIX
 
