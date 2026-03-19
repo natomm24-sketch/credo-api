@@ -6,10 +6,23 @@ const qs = require('qs');
 const app = express();
 app.use(express.json());
 
-const MERCHANT_ID = "TEST";   // შეცვლი
-const SECRET = "secret";      // შეცვლი
+const MERCHANT_ID = "TEST";   // შეცვალე
+const SECRET = "secret";      // შეცვალე
 
 
+// ROOT (რომ Not Found აღარ იყოს)
+app.get("/", (req, res) => {
+  res.send("API is running");
+});
+
+
+// TEST
+app.get('/test', (req, res) => {
+  res.send('ok');
+});
+
+
+// CREDO ORDER
 app.post('/api/credo-order', async (req, res) => {
   try {
     const { products, customer } = req.body;
@@ -50,18 +63,11 @@ app.post('/api/credo-order', async (req, res) => {
     );
 
     const refreshHeader = response.headers['refresh'];
-
     let redirectUrl = null;
 
     if (refreshHeader) {
       redirectUrl = refreshHeader.split('url=')[1];
     }
-
-    console.log("NEW CREDO ORDER:", {
-      orderCode,
-      products,
-      customer
-    });
 
     res.json({ redirectUrl });
 
@@ -75,12 +81,6 @@ app.post('/api/credo-order', async (req, res) => {
 });
 
 
-// ✅ TEST ROUTE (ეს გაკლდა)
-app.get('/test', (req, res) => {
-  res.send('ok');
-});
-
-
 // SUCCESS / FAIL
 app.get('/success', (req, res) => {
   res.send("გადახდა წარმატებით დასრულდა");
@@ -91,4 +91,7 @@ app.get('/fail', (req, res) => {
 });
 
 
-app.listen(3000, () => console.log('Server running'));
+// PORT (Render-სთვის კრიტიკული)
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => console.log('Server running'));
