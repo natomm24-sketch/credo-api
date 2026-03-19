@@ -31,16 +31,25 @@ app.post('/api/credo-order', async (req, res) => {
 
     const orderCode = 'ORD_' + Date.now();
 
-    // 🔥 HASH (სწორად type-ით)
+    // 🔥 1. პროდუქტების სწორ ფორმატში გადაყვანა
+    const formattedProducts = products.map(p => ({
+      id: String(p.id),
+      title: String(p.title),
+      amount: Number(p.amount),
+      price: Number(p.price), // tetri
+      type: Number(p.type || 0)
+    }));
+
+    // 🔥 2. HASH (აუცილებლად formattedProducts-ზე)
     let stringToHash = '';
 
-    products.forEach(p => {
+    formattedProducts.forEach(p => {
       stringToHash +=
-        String(p.id || '') +
-        String(p.title || '') +
-        String(p.amount || 1) +
-        String(p.price || 0) +   // ⚠️ უკვე tetri უნდა იყოს
-        String(p.type || 0);
+        p.id +
+        p.title +
+        p.amount +
+        p.price +
+        p.type;
     });
 
     stringToHash += SECRET;
@@ -50,14 +59,14 @@ app.post('/api/credo-order', async (req, res) => {
       .update(stringToHash)
       .digest('hex');
 
-    // 🔥 REQUEST (სწორი endpoint)
+    // 🔥 3. REQUEST Credo-ზე (სწორი endpoint)
     const response = await axios.post(
       'https://ganvadeba.credo.ge/widget_api/order.php',
       qs.stringify({
         merchantId: MERCHANT_ID,
         orderCode: orderCode,
         check: check,
-        products: JSON.stringify(products),
+        products: JSON.stringify(formattedProducts),
         clientFullName: customer.name || "",
         mobile: customer.phone || "",
         email: customer.email || "",
@@ -71,7 +80,7 @@ app.post('/api/credo-order', async (req, res) => {
       }
     );
 
-    // 🔥 REDIRECT URL
+    // 🔥 4. REDIRECT URL ამოღება
     let redirectUrl = null;
 
     const refresh = response.headers['refresh'];
@@ -84,7 +93,7 @@ app.post('/api/credo-order', async (req, res) => {
       redirectUrl = response.data.redirectUrl;
     }
 
-    // 👉 DEBUG (ძალიან მნიშვნელოვანია)
+    // 👉 DEBUG
     console.log("CREODO RESPONSE:", response.data);
 
     res.json({ redirectUrl });
