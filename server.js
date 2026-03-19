@@ -27,14 +27,13 @@ app.get('/test', (req, res) => {
 // ✅ CREDO ORDER
 app.post('/api/credo-order', async (req, res) => {
   try {
+    // ✅ SAFE DATA (არასდროს კრაშდება)
     const products = req.body.products || [];
-const safeCustomer = req.body.customer || {};
-
-    const safeCustomer = customer || {}; // 🔥 FIX
+    const safeCustomer = req.body.customer || {};
 
     const orderCode = 'ORD_' + Date.now();
 
-    // 🔥 1. პროდუქტების სწორ ფორმატში გადაყვანა
+    // 🔥 პროდუქტების სწორ ფორმატში გადაყვანა
     const formattedProducts = products.map(p => ({
       id: String(p.id),
       title: String(p.title),
@@ -43,7 +42,7 @@ const safeCustomer = req.body.customer || {};
       type: Number(p.type || 0)
     }));
 
-    // 🔥 2. HASH
+    // 🔥 HASH
     let stringToHash = '';
 
     formattedProducts.forEach(p => {
@@ -62,7 +61,7 @@ const safeCustomer = req.body.customer || {};
       .update(stringToHash)
       .digest('hex');
 
-    // 🔥 3. REQUEST
+    // 🔥 REQUEST Credo-ზე
     const response = await axios.post(
       'https://ganvadeba.credo.ge/widget_api/order.php',
       qs.stringify({
@@ -83,7 +82,7 @@ const safeCustomer = req.body.customer || {};
       }
     );
 
-    // 🔥 4. REDIRECT URL
+    // 🔥 REDIRECT URL ამოღება
     let redirectUrl = null;
 
     const refresh = response.headers['refresh'];
@@ -96,6 +95,7 @@ const safeCustomer = req.body.customer || {};
       redirectUrl = response.data.redirectUrl;
     }
 
+    // 👉 DEBUG
     console.log("CREODO RESPONSE:", response.data);
 
     res.json({ redirectUrl });
