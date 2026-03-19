@@ -1,16 +1,14 @@
 const express = require('express');
+const cors = require('cors');
 const crypto = require('crypto');
 const axios = require('axios');
 const qs = require('qs');
-const cors = require('cors');
 
 const app = express();
 
-// ✅ MIDDLEWARE
+// ✅ MIDDLEWARE (ერთხელ და სწორად)
+app.use(cors({ origin: '*' }));
 app.use(express.json());
-app.use(cors({
-  origin: '*'
-}));
 
 // 🔐 CONFIG (შეცვალე რეალურით)
 const MERCHANT_ID = "TEST";
@@ -37,7 +35,12 @@ app.post('/api/credo-order', async (req, res) => {
     let stringToHash = '';
 
     products.forEach(p => {
-      stringToHash += (p.id || '') + (p.title || '') + (p.amount || 1) + (p.price || 0) + (p.type || '');
+      stringToHash +=
+        (p.id || '') +
+        (p.title || '') +
+        (p.amount || 1) +
+        (p.price || 0) +
+        (p.type || '');
     });
 
     stringToHash += SECRET;
@@ -69,11 +72,19 @@ app.post('/api/credo-order', async (req, res) => {
     );
 
     // 🔥 REDIRECT URL ამოღება
-    const refreshHeader = response.headers['refresh'];
     let redirectUrl = null;
 
-    if (refreshHeader && refreshHeader.includes('url=')) {
-      redirectUrl = refreshHeader.split('url=')[1];
+    if (response.headers['refresh']) {
+      const refresh = response.headers['refresh'];
+
+      if (refresh.includes('url=')) {
+        redirectUrl = refresh.split('url=')[1];
+      }
+    }
+
+    // fallback (ზოგჯერ აქ მოდის)
+    if (!redirectUrl && response.data?.redirectUrl) {
+      redirectUrl = response.data.redirectUrl;
     }
 
     res.json({ redirectUrl });
@@ -96,7 +107,7 @@ app.get('/fail', (req, res) => {
   res.send("გადახდა ვერ განხორციელდა");
 });
 
-// ✅ PORT (Render)
+// ✅ PORT
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => console.log('🚀 Server running on port ' + PORT));
