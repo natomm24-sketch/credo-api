@@ -35,13 +35,12 @@ app.post('/api/credo-order', async (req, res) => {
     let stringToHash = '';
 
     products.forEach(p => {
-      stringToHash +=
-        (p.id || '') +
-        (p.title || '') +
-        (p.amount || 1) +
-        (p.price || 0) +
-        (p.type || '');
-    });
+  stringToHash +=
+    String(p.id || '') +
+    String(p.title || '') +
+    String(p.amount || 1) +
+    String(p.price || 0);
+});
 
     stringToHash += SECRET;
 
