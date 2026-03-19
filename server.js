@@ -2,37 +2,42 @@ const express = require('express');
 const crypto = require('crypto');
 const axios = require('axios');
 const qs = require('qs');
+const cors = require('cors');
 
 const app = express();
+
+// ✅ MIDDLEWARE
 app.use(express.json());
+app.use(cors({
+  origin: '*'
+}));
 
-const MERCHANT_ID = "TEST";   // შეცვალე
-const SECRET = "secret";      // შეცვალე
+// 🔐 CONFIG (შეცვალე რეალურით)
+const MERCHANT_ID = "TEST";
+const SECRET = "secret";
 
-
-// ROOT (რომ Not Found აღარ იყოს)
+// ✅ ROOT
 app.get("/", (req, res) => {
   res.send("API is running");
 });
 
-
-// TEST
+// ✅ TEST
 app.get('/test', (req, res) => {
   res.send('ok');
 });
 
-
-// CREDO ORDER
+// ✅ CREDO ORDER
 app.post('/api/credo-order', async (req, res) => {
   try {
-    const { products, customer } = req.body;
+    const { products = [], customer = {} } = req.body;
 
     const orderCode = 'ORD_' + Date.now();
 
+    // 🔥 HASH
     let stringToHash = '';
 
     products.forEach(p => {
-      stringToHash += p.id + p.title + p.amount + p.price + p.type;
+      stringToHash += (p.id || '') + (p.title || '') + (p.amount || 1) + (p.price || 0) + (p.type || '');
     });
 
     stringToHash += SECRET;
@@ -42,6 +47,7 @@ app.post('/api/credo-order', async (req, res) => {
       .update(stringToHash)
       .digest('hex');
 
+    // 🔥 REQUEST CREDO-ზე
     const response = await axios.post(
       'https://ganvadeba.credo.ge/widget_api/index.php',
       qs.stringify({
@@ -49,10 +55,10 @@ app.post('/api/credo-order', async (req, res) => {
         orderCode: orderCode,
         check: check,
         products: JSON.stringify(products),
-        clientFullName: customer?.name || "",
-        mobile: customer?.phone || "",
-        email: customer?.email || "",
-        factAddress: customer?.address || "",
+        clientFullName: customer.name || "",
+        mobile: customer.phone || "",
+        email: customer.email || "",
+        factAddress: customer.address || "",
         installmentLength: 12
       }),
       {
@@ -62,17 +68,18 @@ app.post('/api/credo-order', async (req, res) => {
       }
     );
 
+    // 🔥 REDIRECT URL ამოღება
     const refreshHeader = response.headers['refresh'];
     let redirectUrl = null;
 
-    if (refreshHeader) {
+    if (refreshHeader && refreshHeader.includes('url=')) {
       redirectUrl = refreshHeader.split('url=')[1];
     }
 
     res.json({ redirectUrl });
 
   } catch (err) {
-    console.log('ERROR FROM CREDO:', err.response?.data || err.message);
+    console.log('❌ ERROR FROM CREDO:', err.response?.data || err.message);
 
     res.status(500).json({
       error: err.response?.data || err.message
@@ -80,8 +87,7 @@ app.post('/api/credo-order', async (req, res) => {
   }
 });
 
-
-// SUCCESS / FAIL
+// ✅ SUCCESS / FAIL
 app.get('/success', (req, res) => {
   res.send("გადახდა წარმატებით დასრულდა");
 });
@@ -90,8 +96,7 @@ app.get('/fail', (req, res) => {
   res.send("გადახდა ვერ განხორციელდა");
 });
 
-
-// PORT (Render-სთვის კრიტიკული)
+// ✅ PORT (Render)
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => console.log('Server running'));
+app.listen(PORT, () => console.log('🚀 Server running on port ' + PORT));
