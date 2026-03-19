@@ -6,13 +6,13 @@ const qs = require('qs');
 
 const app = express();
 
-// ✅ MIDDLEWARE (ერთხელ და სწორად)
+// ✅ MIDDLEWARE
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-// 🔐 CONFIG (შეცვალე რეალურით)
-const MERCHANT_ID = "TEST";
-const SECRET = "secret";
+// 🔐 CONFIG
+const MERCHANT_ID = "TEST"; // შეცვალე რეალურით
+const SECRET = "secret";    // შეცვალე რეალურით
 
 // ✅ ROOT
 app.get("/", (req, res) => {
@@ -31,16 +31,17 @@ app.post('/api/credo-order', async (req, res) => {
 
     const orderCode = 'ORD_' + Date.now();
 
-    // 🔥 HASH
+    // 🔥 HASH (სწორად type-ით)
     let stringToHash = '';
 
     products.forEach(p => {
-  stringToHash +=
-    String(p.id || '') +
-    String(p.title || '') +
-    String(p.amount || 1) +
-    String(p.price || 0);
-});
+      stringToHash +=
+        String(p.id || '') +
+        String(p.title || '') +
+        String(p.amount || 1) +
+        String(p.price || 0) +   // ⚠️ უკვე tetri უნდა იყოს
+        String(p.type || 0);
+    });
 
     stringToHash += SECRET;
 
@@ -49,9 +50,9 @@ app.post('/api/credo-order', async (req, res) => {
       .update(stringToHash)
       .digest('hex');
 
-    // 🔥 REQUEST CREDO-ზე
+    // 🔥 REQUEST (სწორი endpoint)
     const response = await axios.post(
-      'https://ganvadeba.credo.ge/widget_api/index.php',
+      'https://ganvadeba.credo.ge/widget_api/order.php',
       qs.stringify({
         merchantId: MERCHANT_ID,
         orderCode: orderCode,
@@ -70,21 +71,21 @@ app.post('/api/credo-order', async (req, res) => {
       }
     );
 
-    // 🔥 REDIRECT URL ამოღება
+    // 🔥 REDIRECT URL
     let redirectUrl = null;
 
-    if (response.headers['refresh']) {
-      const refresh = response.headers['refresh'];
+    const refresh = response.headers['refresh'];
 
-      if (refresh.includes('url=')) {
-        redirectUrl = refresh.split('url=')[1];
-      }
+    if (refresh && refresh.includes('url=')) {
+      redirectUrl = refresh.split('url=')[1];
     }
 
-    // fallback (ზოგჯერ აქ მოდის)
     if (!redirectUrl && response.data?.redirectUrl) {
       redirectUrl = response.data.redirectUrl;
     }
+
+    // 👉 DEBUG (ძალიან მნიშვნელოვანია)
+    console.log("CREODO RESPONSE:", response.data);
 
     res.json({ redirectUrl });
 
