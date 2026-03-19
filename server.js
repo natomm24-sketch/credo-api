@@ -27,24 +27,25 @@ app.get('/test', (req, res) => {
 // ✅ CREDO ORDER
 app.post('/api/credo-order', async (req, res) => {
   try {
-    // ✅ SAFE INPUT (არასდროს დაეცემა)
+    // ✅ SAFE INPUT
     const products = Array.isArray(req.body.products) ? req.body.products : [];
-    const safeCustomer = req.body.customer && typeof req.body.customer === 'object'
-      ? req.body.customer
-      : {};
+    const safeCustomer =
+      req.body.customer && typeof req.body.customer === 'object'
+        ? req.body.customer
+        : {};
 
     const orderCode = 'ORD_' + Date.now();
 
-    // 🔥 PRODUCTS FORMAT
+    // 🔥 PRODUCTS (ყველაფერი STRING როგორც Credo ითხოვს)
     const formattedProducts = products.map(p => ({
       id: String(p.id || ''),
       title: String(p.title || ''),
-      amount: Number(p.amount || 1),
-      price: Number(p.price || 0), // tetri
-      type: 0
+      amount: String(p.amount || 1),   // ✅ STRING
+      price: String(p.price || 0),     // ✅ STRING (tetri)
+      type: "0"                        // ✅ STRING
     }));
 
-    // 🔥 HASH
+    // 🔥 HASH (ზუსტად იგივე მონაცემებზე!)
     let stringToHash = '';
 
     for (const p of formattedProducts) {
@@ -58,7 +59,7 @@ app.post('/api/credo-order', async (req, res) => {
       .update(stringToHash)
       .digest('hex');
 
-    // 🔥 REQUEST CREDO
+    // 🔥 REQUEST
     const response = await axios.post(
       'https://ganvadeba.credo.ge/widget_api/order.php',
       qs.stringify({
@@ -119,7 +120,7 @@ app.get('/fail', (req, res) => {
   res.send("გადახდა ვერ განხორციელდა");
 });
 
-// ✅ START SERVER
+// ✅ START
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
