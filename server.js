@@ -16,40 +16,35 @@ app.get("/", (req, res) => {
   res.send("API is running");
 });
 
-app.get('/test', (req, res) => {
-  res.send('ok');
-});
-
 app.post('/api/credo-order', async (req, res) => {
   try {
     const products = Array.isArray(req.body.products) ? req.body.products : [];
-    const safeCustomer =
-      req.body.customer && typeof req.body.customer === 'object'
-        ? req.body.customer
-        : {};
+
+    if (products.length === 0) {
+      return res.status(400).json({ error: "No products sent" });
+    }
 
     const orderCode = 'ORD_' + Date.now();
 
-    // ✅ PRODUCTS (FIXED PRICE)
+    // ✅ PRODUCTS
     const formattedProducts = products.map(p => {
       const priceInTetri = Math.round((p.price || 0) * 100);
 
-      console.log("PRICE DEBUG:", p.price, "=>", priceInTetri);
-
       return {
-        id: String(p.id || ''),
-        title: String(p.title || '').trim(),
+        id: String(p.id),
+        title: String(p.title).trim(),
         amount: String(p.amount || 1),
-        price: String(Math.round((p.price || 0) * 100)), // ✅ სწორი (თეთრებში)
+        price: String(priceInTetri),
         type: "0"
       };
     });
+
     // ✅ HASH
     let stringToHash = '';
 
-    for (const p of formattedProducts) {
+    formattedProducts.forEach(p => {
       stringToHash += p.id + p.title + p.amount + p.price + p.type;
-    }
+    });
 
     stringToHash += SECRET;
 
@@ -57,18 +52,15 @@ app.post('/api/credo-order', async (req, res) => {
       .createHash('md5')
       .update(stringToHash)
       .digest('hex');
-console.log("HASH STRING:", stringToHash);
-console.log("CHECK:", check);
+
+    console.log("HASH STRING:", stringToHash);
+    console.log("CHECK:", check);
+
     // ✅ FORM DATA
     const data = {
       merchantId: MERCHANT_ID,
       orderCode: orderCode,
-      check: check,
-      clientFullName: safeCustomer.name || "",
-      mobile: safeCustomer.phone || "",
-      email: safeCustomer.email || "",
-      factAddress: safeCustomer.address || "",
-      installmentLength: 12
+      check: check
     };
 
     formattedProducts.forEach((p, i) => {
@@ -79,6 +71,7 @@ console.log("CHECK:", check);
       data[`products[${i}][type]`] = p.type;
     });
 
+    // 🔥 მთავარი FIX — timeout + validateStatus
     const response = await axios.post(
       'https://ganvadeba.credo.ge/widget_api/order.php',
       qs.stringify(data),
@@ -86,35 +79,40 @@ console.log("CHECK:", check);
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded'
         },
-        timeout: 15000
+        timeout: 5000,
+        validateStatus: () => true // 🔥 რომ response ყოველთვის დაბრუნდეს
       }
     );
 
+    console.log("CREDO RAW:", response.data);
+
     let redirectUrl = null;
 
-    const refresh = response.headers?.refresh;
-
-    if (refresh && refresh.includes('url=')) {
-      redirectUrl = refresh.split('url=')[1];
+    if (response.headers?.refresh) {
+      const refresh = response.headers.refresh;
+      if (refresh.includes('url=')) {
+        redirectUrl = refresh.split('url=')[1];
+      }
     }
 
     if (!redirectUrl && response.data?.URL) {
       redirectUrl = response.data.URL;
     }
 
-    if (!redirectUrl && response.data?.redirectUrl) {
-      redirectUrl = response.data.redirectUrl;
+    if (!redirectUrl) {
+      return res.status(400).json({
+        error: "No redirect URL",
+        credoResponse: response.data
+      });
     }
-
-    console.log("CREDO RESPONSE:", response.data);
 
     return res.json({ redirectUrl });
 
   } catch (err) {
-    console.log('❌ ERROR FROM CREDO:', err.response?.data || err.message);
+    console.log("FULL ERROR:", err);
 
     return res.status(500).json({
-      error: err.response?.data || err.message
+      error: err.message
     });
   }
 });
