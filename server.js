@@ -77,12 +77,12 @@ app.post('/api/credo-order', async (req, res) => {
     };
 
     formattedProducts.forEach((p, i) => {
-      data[`products[${i}][id]`] = p.id;
-      data[`products[${i}][title]`] = p.title;
-      data[`products[${i}][amount]`] = p.amount;
-      data[`products[${i}][price]`] = p.price;
-      data[`products[${i}][type]`] = p.type;
-    });
+  data[`products[${i}][id]`] = String(p.id);
+  data[`products[${i}][title]`] = String(p.title);
+  data[`products[${i}][amount]`] = String(p.amount); // ✅ აქ
+  data[`products[${i}][price]`] = String(p.price);   // ✅ აქ
+  data[`products[${i}][type]`] = String(p.type);     // ✅ აქ
+});
 
     // ✅ REQUEST
     const response = await axios.post(
