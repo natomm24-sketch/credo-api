@@ -32,7 +32,10 @@ app.post('/api/credo-order', async (req, res) => {
 
       return {
         id: String(p.id),
-        title: String(p.title).trim(),
+        title: String(p.title)
+  .replace(/[^\x00-\x7F]/g, '') // ❗ remove non-latin
+  .replace(/[()]/g, '')         // ❗ remove brackets
+  .trim(),
         amount: String(p.amount || 1),
         price: String(priceInTetri),
         type: "0"
