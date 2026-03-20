@@ -26,23 +26,28 @@ app.post('/api/credo-order', async (req, res) => {
 
     const orderCode = 'ORD_' + Date.now();
 
-    // ✅ PRODUCTS
+    // ✅ PRODUCTS (სწორი ტიპებით!)
     const formattedProducts = products.map(p => {
+      const cleanTitle = String(p.title)
+        .replace(/[^\x00-\x7F]/g, '') // remove non-latin
+        .replace(/[()]/g, '')         // remove brackets
+        .trim();
+
       const priceInTetri = Math.round((p.price || 0) * 100);
+
+      console.log("FINAL TITLE:", cleanTitle);
+      console.log("PRICE:", priceInTetri);
 
       return {
         id: String(p.id),
-        title: String(p.title)
-  .replace(/[^\x00-\x7F]/g, '') // ❗ remove non-latin
-  .replace(/[()]/g, '')         // ❗ remove brackets
-  .trim(),
-        amount: String(p.amount || 1),
-        price: String(priceInTetri),
-        type: "0"
+        title: cleanTitle,
+        amount: Number(p.amount || 1),   // ❗ NUMBER
+        price: Number(priceInTetri),     // ❗ NUMBER
+        type: 0                          // ❗ NUMBER
       };
     });
 
-    // ✅ HASH
+    // ✅ HASH (ზუსტად იგივე order!)
     let stringToHash = '';
 
     formattedProducts.forEach(p => {
@@ -74,7 +79,7 @@ app.post('/api/credo-order', async (req, res) => {
       data[`products[${i}][type]`] = p.type;
     });
 
-    // 🔥 მთავარი FIX — timeout + validateStatus
+    // ✅ REQUEST
     const response = await axios.post(
       'https://ganvadeba.credo.ge/widget_api/order.php',
       qs.stringify(data),
@@ -83,7 +88,7 @@ app.post('/api/credo-order', async (req, res) => {
           'Content-Type': 'application/x-www-form-urlencoded'
         },
         timeout: 5000,
-        validateStatus: () => true // 🔥 რომ response ყოველთვის დაბრუნდეს
+        validateStatus: () => true
       }
     );
 
