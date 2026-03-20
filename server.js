@@ -27,7 +27,6 @@ app.get('/test', (req, res) => {
 // ✅ CREDO ORDER
 app.post('/api/credo-order', async (req, res) => {
   try {
-    // ✅ SAFE INPUT
     const products = Array.isArray(req.body.products) ? req.body.products : [];
     const safeCustomer =
       req.body.customer && typeof req.body.customer === 'object'
@@ -36,16 +35,16 @@ app.post('/api/credo-order', async (req, res) => {
 
     const orderCode = 'ORD_' + Date.now();
 
-    // 🔥 PRODUCTS (ყველაფერი STRING როგორც Credo ითხოვს)
+    // 🔥 PRODUCTS
     const formattedProducts = products.map(p => ({
       id: String(p.id || ''),
       title: String(p.title || ''),
-      amount: String(p.amount || 1),   // ✅ STRING
-      price: String(p.price || 0),     // ✅ STRING (tetri)
-      type: "0"                        // ✅ STRING
+      amount: String(p.amount || 1),
+      price: String(p.price || 0), // ⚠️ უნდა იყოს თეთრებში!
+      type: "0"
     }));
 
-    // 🔥 HASH (ზუსტად იგივე მონაცემებზე!)
+    // 🔥 HASH
     let stringToHash = '';
 
     for (const p of formattedProducts) {
@@ -59,20 +58,29 @@ app.post('/api/credo-order', async (req, res) => {
       .update(stringToHash)
       .digest('hex');
 
-    // 🔥 REQUEST
+    // 🔥 FORM DATA (სწორი ფორმატი)
+    const data = {
+      merchantId: MERCHANT_ID,
+      orderCode: orderCode,
+      check: check,
+      clientFullName: safeCustomer.name || "",
+      mobile: safeCustomer.phone || "",
+      email: safeCustomer.email || "",
+      factAddress: safeCustomer.address || "",
+      installmentLength: 12
+    };
+
+    formattedProducts.forEach((p, i) => {
+      data[`products[${i}][id]`] = p.id;
+      data[`products[${i}][title]`] = p.title;
+      data[`products[${i}][amount]`] = p.amount;
+      data[`products[${i}][price]`] = p.price;
+      data[`products[${i}][type]`] = p.type;
+    });
+
     const response = await axios.post(
       'https://ganvadeba.credo.ge/widget_api/order.php',
-      qs.stringify({
-        merchantId: MERCHANT_ID,
-        orderCode: orderCode,
-        check: check,
-        products: JSON.stringify(formattedProducts),
-        clientFullName: safeCustomer.name || "",
-        mobile: safeCustomer.phone || "",
-        email: safeCustomer.email || "",
-        factAddress: safeCustomer.address || "",
-        installmentLength: 12
-      }),
+      qs.stringify(data),
       {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded'
