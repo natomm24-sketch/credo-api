@@ -6,25 +6,20 @@ const qs = require('qs');
 
 const app = express();
 
-// ✅ MIDDLEWARE
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-// 🔐 CONFIG
 const MERCHANT_ID = "TEST"; // შეცვალე რეალურით
 const SECRET = "secret";    // შეცვალე რეალურით
 
-// ✅ ROOT
 app.get("/", (req, res) => {
   res.send("API is running");
 });
 
-// ✅ TEST
 app.get('/test', (req, res) => {
   res.send('ok');
 });
 
-// ✅ CREDO ORDER
 app.post('/api/credo-order', async (req, res) => {
   try {
     const products = Array.isArray(req.body.products) ? req.body.products : [];
@@ -35,16 +30,22 @@ app.post('/api/credo-order', async (req, res) => {
 
     const orderCode = 'ORD_' + Date.now();
 
-    // 🔥 PRODUCTS
-    const formattedProducts = products.map(p => ({
-      id: String(p.id || ''),
-      title: String(p.title || ''),
-      amount: String(p.amount || 1),
-      price: String(p.price || 0), // ⚠️ უნდა იყოს თეთრებში!
-      type: "0"
-    }));
+    // ✅ PRODUCTS (FIXED PRICE)
+    const formattedProducts = products.map(p => {
+      const priceInTetri = Math.round((p.price || 0) * 100);
 
-    // 🔥 HASH
+      console.log("PRICE DEBUG:", p.price, "=>", priceInTetri);
+
+      return {
+        id: String(p.id || ''),
+        title: String(p.title || ''),
+        amount: String(p.amount || 1),
+        price: String(priceInTetri), // ✅ სწორი (თეთრებში)
+        type: "0"
+      };
+    });
+
+    // ✅ HASH
     let stringToHash = '';
 
     for (const p of formattedProducts) {
@@ -58,7 +59,7 @@ app.post('/api/credo-order', async (req, res) => {
       .update(stringToHash)
       .digest('hex');
 
-    // 🔥 FORM DATA (სწორი ფორმატი)
+    // ✅ FORM DATA
     const data = {
       merchantId: MERCHANT_ID,
       orderCode: orderCode,
@@ -89,7 +90,6 @@ app.post('/api/credo-order', async (req, res) => {
       }
     );
 
-    // 🔥 REDIRECT URL
     let redirectUrl = null;
 
     const refresh = response.headers?.refresh;
@@ -119,16 +119,6 @@ app.post('/api/credo-order', async (req, res) => {
   }
 });
 
-// ✅ SUCCESS / FAIL
-app.get('/success', (req, res) => {
-  res.send("გადახდა წარმატებით დასრულდა");
-});
-
-app.get('/fail', (req, res) => {
-  res.send("გადახდა ვერ განხორციელდა");
-});
-
-// ✅ START
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
