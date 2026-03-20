@@ -9,7 +9,7 @@ const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-// ⚠️ აქ ჩაწერე შენი რეალური მონაცემები
+// ⚠️ აქ ჩაწერე შენი რეალური მონაცემები Credo-სგან
 const MERCHANT_ID = "XXXX"; 
 const SECRET = "your_secret_here"; 
 
@@ -30,7 +30,7 @@ app.post('/api/credo-order', async (req, res) => {
       type: "0" // ყოველთვის "0" [cite: 17, 141]
     }));
 
-    // 2. ჰეშის გენერაცია [cite: 14, 136]
+    // 2. ჰეშის გენერაცია: Id+title+amount+price+type + password [cite: 14, 136]
     let stringToHash = "";
     formattedProducts.forEach(p => {
       stringToHash += p.id + p.title + p.amount + p.price + p.type;
@@ -52,9 +52,9 @@ app.post('/api/credo-order', async (req, res) => {
       factAddress: safeCustomer.address || ""
     };
 
-    // 4. მოთხოვნის გაგზავნა credoinstallment ველით [cite: 98]
+    // 4. მოთხოვნის გაგზავნა "credoinstallment" ველით [cite: 84, 98]
     const response = await axios.post(
-      'https://ganvadeba.credo.ge/widget_api/index.php',
+      'https://ganvadeba.credo.ge/widget_api/index.php', // სწორი URL [cite: 83]
       qs.stringify({
         credoinstallment: JSON.stringify(credoPayload)
       }),
@@ -64,7 +64,7 @@ app.post('/api/credo-order', async (req, res) => {
       }
     );
 
-    // 5. რედირექტის ლოგიკა [cite: 129, 142]
+    // 5. რედირექტის ამოღება ჰედერიდან ან ბოდიდან [cite: 18, 142]
     let redirectUrl = response.data?.URL || response.data?.redirectUrl;
     
     const refreshHeader = response.headers?.refresh;
@@ -81,5 +81,8 @@ app.post('/api/credo-order', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log('🚀 Server running on port ' + PORT));
+// Render-ისთვის აუცილებელი პორტის კონფიგურაცია
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log('🚀 Server running on port ' + PORT);
+});
