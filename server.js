@@ -38,13 +38,12 @@ app.post('/api/credo-order', async (req, res) => {
 
       return {
         id: String(p.id || ''),
-        title: String(p.title || ''),
+        title: String(p.title || '').trim(),
         amount: String(p.amount || 1),
-        price: String(priceInTetri), // ✅ სწორი (თეთრებში)
+        price: String(Math.round((p.price || 0) * 100)), // ✅ სწორი (თეთრებში)
         type: "0"
       };
     });
-
     // ✅ HASH
     let stringToHash = '';
 
@@ -58,7 +57,8 @@ app.post('/api/credo-order', async (req, res) => {
       .createHash('md5')
       .update(stringToHash)
       .digest('hex');
-
+console.log("HASH STRING:", stringToHash);
+console.log("CHECK:", check);
     // ✅ FORM DATA
     const data = {
       merchantId: MERCHANT_ID,
