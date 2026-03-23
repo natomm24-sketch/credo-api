@@ -9,8 +9,8 @@ const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-const MERCHANT_ID = "TEST"; // შეცვალე რეალურით
-const SECRET = "secret";    // შეცვალე რეალურით
+const MERCHANT_ID = "21118";
+const SECRET = "Vq6h3J0+fI";
 
 app.get("/", (req, res) => {
   res.send("API is running");
@@ -26,38 +26,33 @@ app.post('/api/credo-order', async (req, res) => {
 
     const orderCode = 'ORD_' + Date.now();
 
-    // ✅ PRODUCTS (სწორი ტიპებით!)
     const formattedProducts = products.map(p => {
       const cleanTitle = String(p.title)
-        .replace(/[^\x00-\x7F]/g, '') // remove non-latin
-        .replace(/[()]/g, '')         // remove brackets
+        .replace(/[^\x00-\x7F]/g, '')
+        .replace(/[()]/g, '')
         .trim();
 
       const priceInTetri = Math.round((p.price || 0) * 100);
 
-      console.log("FINAL TITLE:", cleanTitle);
-      console.log("PRICE:", priceInTetri);
-
       return {
         id: String(p.id),
         title: cleanTitle,
-        amount: Number(p.amount || 1),   // ❗ NUMBER
-        price: Number(priceInTetri),     // ❗ NUMBER
-        type: 0                          // ❗ NUMBER
+        amount: Number(p.amount || 1),
+        price: Number(priceInTetri),
+        type: "0"
       };
     });
 
-    // ✅ HASH (ზუსტად იგივე order!)
     let stringToHash = '';
 
     formattedProducts.forEach(p => {
-  stringToHash +=
-    String(p.id) +
-    String(p.title) +
-    String(p.amount) +
-    String(p.price) +
-    String(p.type);
-});
+      stringToHash +=
+        String(p.id) +
+        String(p.title) +
+        String(p.amount) +
+        String(p.price) +
+        String(p.type);
+    });
 
     stringToHash += SECRET;
 
@@ -66,25 +61,23 @@ app.post('/api/credo-order', async (req, res) => {
       .update(stringToHash)
       .digest('hex');
 
-    console.log("HASH STRING:", stringToHash);
-    console.log("CHECK:", check);
-
-    // ✅ FORM DATA
     const data = {
       merchantId: MERCHANT_ID,
       orderCode: orderCode,
-      check: check
+      check: check,
+
+      // ✅ სწორი redirect
+      redirectUrl: "https://ezzy.ge/"
     };
 
     formattedProducts.forEach((p, i) => {
-  data[`products[${i}][id]`] = String(p.id);
-  data[`products[${i}][title]`] = String(p.title);
-  data[`products[${i}][amount]`] = String(p.amount); // ✅ აქ
-  data[`products[${i}][price]`] = String(p.price);   // ✅ აქ
-  data[`products[${i}][type]`] = String(p.type);     // ✅ აქ
-});
+      data[`products[${i}][id]`] = String(p.id);
+      data[`products[${i}][title]`] = String(p.title);
+      data[`products[${i}][amount]`] = String(p.amount);
+      data[`products[${i}][price]`] = String(p.price);
+      data[`products[${i}][type]`] = String(p.type);
+    });
 
-    // ✅ REQUEST
     const response = await axios.post(
       'https://ganvadeba.credo.ge/widget_api/order.php',
       qs.stringify(data),
