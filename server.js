@@ -25,6 +25,8 @@ app.post('/api/credo-order', async (req, res) => {
       type: "0"
     }));
 
+    console.log("FORMATTED:", formattedProducts);
+
     let stringToHash = '';
     formattedProducts.forEach(p => {
       stringToHash += p.id + p.title + p.amount + p.price + "0";
