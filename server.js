@@ -12,6 +12,10 @@ app.use(express.json());
 const MERCHANT_ID = "21118";
 const SECRET = "Vq6h3J0+fI";
 
+app.get("/", (req, res) => {
+  res.status(200).send("OK");
+});
+
 app.post('/api/credo-order', async (req, res) => {
   try {
     const products = Array.isArray(req.body.products) ? req.body.products : [];
@@ -24,8 +28,6 @@ app.post('/api/credo-order', async (req, res) => {
       price: Math.round(Number(p.price) * 100),
       type: "0"
     }));
-
-    console.log("FORMATTED:", formattedProducts);
 
     let stringToHash = '';
     formattedProducts.forEach(p => {
