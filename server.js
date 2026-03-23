@@ -5,133 +5,82 @@ const axios = require('axios');
 const qs = require('qs');
 
 const app = express();
-
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
 const MERCHANT_ID = "21118";
 const SECRET = "Vq6h3J0+fI";
 
-app.get("/", (req, res) => {
-  res.send("API is running");
-});
-
 app.post('/api/credo-order', async (req, res) => {
-  try {
-    const products = Array.isArray(req.body.products) ? req.body.products : [];
+    try {
+        const products = Array.isArray(req.body.products) ? req.body.products : [];
+        const orderCode = 'ORD_' + Date.now();
 
-    if (products.length === 0) {
-      return res.status(400).json({ error: "No products sent" });
+        // 1. პროდუქტების მომზადება
+        const formattedProducts = products.map(p => ({
+            id: String(p.id),
+            title: String(p.title).replace(/[^\x00-\x7F]/g, '').trim(),
+            amount: Number(p.amount || 1),
+            price: Math.round(Number(p.price) * 100),
+            type: "0" // დოკუმენტში ზოგჯერ String-ია [cite: 141]
+        }));
+
+        // 2. სწორი HASH (მხოლოდ პროდუქტები + საიდუმლო) 
+        let stringToHash = "";
+        formattedProducts.forEach(p => {
+            stringToHash += p.id + p.title + p.amount + p.price + p.type;
+        });
+        stringToHash += SECRET;
+        const check = crypto.createHash('md5').update(stringToHash).digest('hex');
+
+        // 3. მონაცემების აწყობა x-www-form-urlencoded ფორმატისთვის
+        const formData = {
+            merchantId: MERCHANT_ID,
+            orderCode: orderCode,
+            check: check,
+            installmentLength: 12
+        };
+
+        // პროდუქტების დამატება ინდექსებით: products[0][id] [cite: 137-141]
+        formattedProducts.forEach((p, i) => {
+            formData[`products[${i}][id]`] = p.id;
+            formData[`products[${i}][title]`] = p.title;
+            formData[`products[${i}][amount]`] = String(p.amount);
+            formData[`products[${i}][price]`] = String(p.price);
+            formData[`products[${i}][type]`] = p.type;
+        });
+
+        // 4. მოთხოვნა
+        const response = await axios.post(
+            'https://ganvadeba.credo.ge/widget_api/order.php',
+            qs.stringify(formData),
+            {
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                maxRedirects: 0, // არ გადაყვეს ავტომატურად
+                validateStatus: (status) => status >= 200 && status < 400 
+            }
+        );
+
+        // 5. URL-ის ძებნა Header-ში ან Body-ში [cite: 18, 142]
+        let redirectUrl = response.headers['location'] || 
+                          response.headers['refresh']?.split('url=')[1] || 
+                          response.data?.URL || 
+                          response.data?.data?.URL;
+
+        if (redirectUrl) {
+            return res.json({ redirectUrl });
+        }
+
+        return res.status(400).json({
+            error: "Redirect URL ვერ მოიძებნა",
+            credoResponse: response.data,
+            headers: response.headers
+        });
+
+    } catch (err) {
+        console.error("ERROR:", err.message);
+        res.status(500).json({ error: err.message });
     }
-
-    const orderCode = 'ORD_' + Date.now();
-
-    // ✅ PRODUCTS
-    const formattedProducts = products.map(p => {
-      const cleanTitle = String(p.title)
-        .replace(/[^\x00-\x7F]/g, '')
-        .replace(/[()]/g, '')
-        .trim();
-
-      const priceInTetri = Math.round((p.price || 0) * 100);
-
-      return {
-        id: String(p.id),
-        title: cleanTitle || "Product",
-        amount: Number(p.amount || 1),
-        price: Number(priceInTetri),
-        type: 0 // ❗ NUMBER (ძალიან მნიშვნელოვანია)
-      };
-    });
-
-    // ✅ 🔥 სწორი HASH (FINAL)
-    let stringToHash = '';
-
-    formattedProducts.forEach(p => {
-      stringToHash +=
-        p.id +
-        p.title +
-        p.amount +
-        p.price +
-        p.type;
-    });
-
-    stringToHash += MERCHANT_ID + orderCode + SECRET;
-
-    const check = crypto
-      .createHash('md5')
-      .update(stringToHash)
-      .digest('hex');
-
-    console.log("HASH STRING:", stringToHash);
-    console.log("CHECK:", check);
-
-    // ✅ DATA
-    const data = {
-      merchantId: MERCHANT_ID,
-      orderCode: orderCode,
-      check: check,
-      redirectUrl: "https://ezzy.ge/",
-      installmentLength: 12
-    };
-
-    // ✅ PRODUCTS → form-data
-    formattedProducts.forEach((p, i) => {
-      data[`products[${i}][id]`] = String(p.id);
-      data[`products[${i}][title]`] = String(p.title);
-      data[`products[${i}][amount]`] = String(p.amount);
-      data[`products[${i}][price]`] = String(p.price);
-      data[`products[${i}][type]`] = String(p.type);
-    });
-
-    // ✅ REQUEST
-    const response = await axios.post(
-      'https://ganvadeba.credo.ge/widget_api/order.php',
-      qs.stringify(data),
-      {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        timeout: 5000,
-        validateStatus: () => true
-      }
-    );
-
-    console.log("CREDO FULL RESPONSE:", response.data);
-
-    let redirectUrl = null;
-
-    if (response.headers?.refresh) {
-      const refresh = response.headers.refresh;
-      if (refresh.includes('url=')) {
-        redirectUrl = refresh.split('url=')[1];
-      }
-    }
-
-    if (!redirectUrl && response.data?.URL) {
-      redirectUrl = response.data.URL;
-    }
-
-    if (!redirectUrl) {
-      return res.status(400).json({
-        error: "No redirect URL",
-        credoResponse: response.data
-      });
-    }
-
-    return res.json({ redirectUrl });
-
-  } catch (err) {
-    console.log("FULL ERROR:", err.response?.data || err.message);
-
-    return res.status(500).json({
-      error: err.message
-    });
-  }
 });
 
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log('🚀 Server running on port ' + PORT);
-});
+app.listen(process.env.PORT || 3000);
