@@ -26,6 +26,7 @@ app.post('/api/credo-order', async (req, res) => {
 
     const orderCode = 'ORD_' + Date.now();
 
+    // ✅ PRODUCTS სწორ ფორმატში
     const formattedProducts = products.map(p => {
       const cleanTitle = String(p.title)
         .replace(/[^\x00-\x7F]/g, '')
@@ -43,41 +44,31 @@ app.post('/api/credo-order', async (req, res) => {
       };
     });
 
-    let stringToHash = '';
-
-    formattedProducts.forEach(p => {
-      stringToHash +=
-        String(p.id) +
-        String(p.title) +
-        String(p.amount) +
-        String(p.price) +
-        String(p.type);
-    });
-
-    stringToHash += SECRET;
-
+    // ✅ სწორი HASH (ძალიან მნიშვნელოვანი)
     const check = crypto
       .createHash('md5')
-      .update(stringToHash)
+      .update(MERCHANT_ID + orderCode + SECRET)
       .digest('hex');
 
+    // ✅ BASE DATA
     const data = {
       merchantId: MERCHANT_ID,
       orderCode: orderCode,
       check: check,
-
-      // ✅ სწორი redirect
-      redirectUrl: "https://ezzy.ge/"
+      redirectUrl: "https://ezzy.ge/",
+      installmentLength: 12
     };
 
+    // ✅ PRODUCTS → form-data
     formattedProducts.forEach((p, i) => {
-      data[`products[${i}][id]`] = String(p.id);
-      data[`products[${i}][title]`] = String(p.title);
-      data[`products[${i}][amount]`] = String(p.amount);
-      data[`products[${i}][price]`] = String(p.price);
-      data[`products[${i}][type]`] = String(p.type);
+      data[`products[${i}][id]`] = p.id;
+      data[`products[${i}][title]`] = p.title;
+      data[`products[${i}][amount]`] = p.amount;
+      data[`products[${i}][price]`] = p.price;
+      data[`products[${i}][type]`] = p.type;
     });
 
+    // ✅ REQUEST
     const response = await axios.post(
       'https://ganvadeba.credo.ge/widget_api/order.php',
       qs.stringify(data),
@@ -90,10 +81,11 @@ app.post('/api/credo-order', async (req, res) => {
       }
     );
 
-    console.log("CREDO RAW:", response.data);
+    console.log("CREDO FULL RESPONSE:", response);
 
     let redirectUrl = null;
 
+    // 🔹 header redirect
     if (response.headers?.refresh) {
       const refresh = response.headers.refresh;
       if (refresh.includes('url=')) {
@@ -101,6 +93,7 @@ app.post('/api/credo-order', async (req, res) => {
       }
     }
 
+    // 🔹 body redirect
     if (!redirectUrl && response.data?.URL) {
       redirectUrl = response.data.URL;
     }
@@ -115,7 +108,7 @@ app.post('/api/credo-order', async (req, res) => {
     return res.json({ redirectUrl });
 
   } catch (err) {
-    console.log("FULL ERROR:", err);
+    console.log("FULL ERROR:", err.response?.data || err.message);
 
     return res.status(500).json({
       error: err.message
