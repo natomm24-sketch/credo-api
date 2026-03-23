@@ -42,17 +42,10 @@ app.post('/api/credo-order', async (req, res) => {
     form.append('orderCode', orderCode);
     form.append('check', check);
     form.append('installmentLength', '12');
-
-    formattedProducts.forEach((p, i) => {
-      form.append(`products[${i}][id]`, p.id);
-      form.append(`products[${i}][title]`, p.title);
-      form.append(`products[${i}][amount]`, String(p.amount));
-      form.append(`products[${i}][price]`, String(p.price));
-      form.append(`products[${i}][type]`, "0");
-    });
+    form.append('products', JSON.stringify(formattedProducts));
 
     const response = await axios.post(
-      'https://ganvadeba.credo.ge/widget_api/order.php',
+      'https://ganvadeba.credo.ge/widget_api/index.php',
       form,
       {
         headers: form.getHeaders(),
