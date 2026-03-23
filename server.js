@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
 const axios = require('axios');
-const FormData = require('form-data');
+const qs = require('qs');
 
 const app = express();
 
@@ -36,19 +36,28 @@ app.post('/api/credo-order', async (req, res) => {
       .update(stringToHash)
       .digest('hex');
 
-    const form = new FormData();
+    const data = {
+      merchantId: MERCHANT_ID,
+      orderCode: orderCode,
+      check: check,
+      installmentLength: 12
+    };
 
-    form.append('merchantId', MERCHANT_ID);
-    form.append('orderCode', orderCode);
-    form.append('check', check);
-    form.append('installmentLength', '12');
-    form.append('products', JSON.stringify(formattedProducts));
+    formattedProducts.forEach((p, i) => {
+      data[`products[${i}][id]`] = p.id;
+      data[`products[${i}][title]`] = p.title;
+      data[`products[${i}][amount]`] = p.amount;
+      data[`products[${i}][price]`] = p.price;
+      data[`products[${i}][type]`] = "0";
+    });
 
     const response = await axios.post(
       'https://ganvadeba.credo.ge/widget_api/index.php',
-      form,
+      qs.stringify(data),
       {
-        headers: form.getHeaders(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
         maxRedirects: 0,
         validateStatus: () => true
       }
