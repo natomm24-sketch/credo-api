@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
 const axios = require('axios');
-const FormData = require('form-data'); // ❗ აუცილებელია
+const FormData = require('form-data');
 
 const app = express();
 
@@ -22,13 +22,12 @@ app.post('/api/credo-order', async (req, res) => {
       title: String(p.title).replace(/[^\x00-\x7F]/g, '').trim() || "Product",
       amount: Number(p.amount || 1),
       price: Math.round(Number(p.price) * 100),
-      type: 0 // ✅ NUMBER!!!
+      type: "0"
     }));
 
-    // ✅ HASH
     let stringToHash = '';
     formattedProducts.forEach(p => {
-      stringToHash += p.id + p.title + p.amount + p.price + p.type;
+      stringToHash += p.id + p.title + p.amount + p.price + "0";
     });
     stringToHash += SECRET;
 
@@ -37,20 +36,19 @@ app.post('/api/credo-order', async (req, res) => {
       .update(stringToHash)
       .digest('hex');
 
-    // ✅ REAL FormData
     const form = new FormData();
 
     form.append('merchantId', MERCHANT_ID);
     form.append('orderCode', orderCode);
     form.append('check', check);
-    form.append('installmentLength', 12);
+    form.append('installmentLength', '12');
 
     formattedProducts.forEach((p, i) => {
       form.append(`products[${i}][id]`, p.id);
       form.append(`products[${i}][title]`, p.title);
-      form.append(`products[${i}][amount]`, p.amount);
-      form.append(`products[${i}][price]`, p.price);
-      form.append(`products[${i}][type]`, p.type);
+      form.append(`products[${i}][amount]`, String(p.amount));
+      form.append(`products[${i}][price]`, String(p.price));
+      form.append(`products[${i}][type]`, "0");
     });
 
     const response = await axios.post(
@@ -65,9 +63,9 @@ app.post('/api/credo-order', async (req, res) => {
 
     let redirectUrl =
       response.headers.location ||
-      (response.headers.refresh?.includes('url=') ? response.headers.refresh.split('url=')[1] : null) ||
-      response.data?.URL ||
-      response.data?.data?.URL;
+      (response.headers.refresh && response.headers.refresh.includes('url=') ? response.headers.refresh.split('url=')[1] : null) ||
+      (response.data && response.data.URL) ||
+      (response.data && response.data.data && response.data.data.URL);
 
     if (redirectUrl) {
       return res.json({ redirectUrl });
@@ -79,7 +77,9 @@ app.post('/api/credo-order', async (req, res) => {
     });
 
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({
+      error: err.message
+    });
   }
 });
 
