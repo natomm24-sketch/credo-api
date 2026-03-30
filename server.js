@@ -102,7 +102,7 @@ app.post('/api/create-order-and-credo', async (req, res) => {
         draft_order: {
           line_items: products.map(p => ({
             title: p.title,
-            price: p.price,
+            price: (Number(p.price) / 100).toFixed(2),
             quantity: p.amount || 1
           })),
           use_customer_default_address: true
