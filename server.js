@@ -13,7 +13,7 @@ const MERCHANT_ID = "21118";
 const SECRET = "Vq6h3J0+fI";
 
 const SHOP = "ezzy-ge.myshopify.com";
-const ACCESS_TOKEN = "shpat_XXXXXXXXXXXX";
+const ACCESS_TOKEN = "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";
 
 app.get("/", (req, res) => {
   res.status(200).send("OK");
@@ -106,8 +106,7 @@ app.post('/api/create-order-and-credo', async (req, res) => {
             quantity: p.amount || 1
           })),
           customer: {
-            first_name: req.body.name || "Customer",
-            phone: req.body.phone || ""
+            first_name: req.body.name || "Customer"
           },
           shipping_address: {
             first_name: req.body.name || "Customer",
