@@ -91,10 +91,10 @@ app.post('/api/credo-order', async (req, res) => {
 
 app.get('/auth/callback', async (req, res) => {
   try {
-    const { code } = req.query;
+    const { code, shop } = req.query;
 
     const response = await axios.post(
-      'https://ezzy-ge.myshopify.com/admin/oauth/access_token',
+      `https://${shop}/admin/oauth/access_token`,
       {
         client_id: 'af5fb204f41d87764fb313cb873734eb',
         client_secret: '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',
