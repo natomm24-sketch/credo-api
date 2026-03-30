@@ -28,8 +28,8 @@ app.post('/api/credo-order', async (req, res) => {
       id: String(p.id),
       title: String(p.title).replace(/[^\x00-\x7F]/g, '').trim() || "Product",
       amount: Number(p.amount || 1),
-      price: Math.round(Number(p.price) * 100),
-      type: "0"
+      price: Number(p.price),
+      type: 0
     }));
 
     let stringToHash = '';
