@@ -100,11 +100,31 @@ app.post('/api/create-order-and-credo', async (req, res) => {
       `https://${SHOP}/admin/api/2024-01/draft_orders.json`,
       {
         draft_order: {
-          line_items: products.map(p => ({
-            title: p.title,
-            price: (Number(p.price) / 100).toFixed(2),
-            quantity: p.amount || 1
-          })),
+  line_items: products.map(p => ({
+    title: p.title + " / " + (p.variant || ""), // 👉 ზომა დაემატება
+    price: (Number(p.price) / 100).toFixed(2),
+    quantity: p.amount || 1
+  })),
+
+  customer: {
+    first_name: req.body.name || "Customer",
+    phone: req.body.phone || ""
+  },
+
+  shipping_address: {
+    first_name: req.body.name || "Customer",
+    address1: req.body.address || "",
+    phone: req.body.phone || "",
+    country: "Georgia"
+  },
+
+  note: `Credo Order
+Name: ${req.body.name}
+Phone: ${req.body.phone}
+Address: ${req.body.address}`,
+  
+  use_customer_default_address: false
+}
           use_customer_default_address: true
         }
       },
