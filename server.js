@@ -13,12 +13,16 @@ const MERCHANT_ID = "21118";
 const SECRET = "Vq6h3J0+fI";
 
 const SHOP = "ezzy-ge.myshopify.com";
-const ACCESS_TOKEN = "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";
+const ACCESS_TOKEN = "shpat_XXXXXXXXXXXX"; // 🔥 შენი დატოვე
 
 app.get("/", (req, res) => {
   res.status(200).send("OK");
 });
 
+
+// =======================
+// CREDO ORDER
+// =======================
 app.post('/api/credo-order', async (req, res) => {
   try {
     const products = Array.isArray(req.body.products) ? req.body.products : [];
@@ -28,7 +32,7 @@ app.post('/api/credo-order', async (req, res) => {
       id: String(p.id),
       title: String(p.title).replace(/[^\x00-\x7F]/g, '').trim() || "Product",
       amount: Number(p.amount || 1),
-      price: Number(p.price),
+      price: Number(p.price), // ✅ tetri
       type: 0
     }));
 
@@ -55,7 +59,7 @@ app.post('/api/credo-order', async (req, res) => {
       data[`products[${i}][title]`] = p.title;
       data[`products[${i}][amount]`] = p.amount;
       data[`products[${i}][price]`] = p.price;
-      data[`products[${i}][type]`] = "0";
+      data[`products[${i}][type]`] = 0;
     });
 
     const response = await axios.post(
@@ -92,40 +96,43 @@ app.post('/api/credo-order', async (req, res) => {
   }
 });
 
+
+// =======================
+// SHOPIFY + CREDO FLOW
+// =======================
 app.post('/api/create-order-and-credo', async (req, res) => {
   try {
     const products = req.body.products || [];
 
+    // 🔹 Shopify Draft Order
     const shopifyResponse = await axios.post(
       `https://${SHOP}/admin/api/2024-01/draft_orders.json`,
       {
         draft_order: {
-  line_items: products.map(p => ({
-    title: p.title + " / " + (p.variant || ""), // 👉 ზომა დაემატება
-    price: (Number(p.price) / 100).toFixed(2),
-    quantity: p.amount || 1
-  })),
+          line_items: products.map(p => ({
+            title: p.title + " / " + (p.variant || ""),
+            price: (Number(p.price) / 100).toFixed(2), // ✅ GEL
+            quantity: p.amount || 1
+          })),
 
-  customer: {
-    first_name: req.body.name || "Customer",
-    phone: req.body.phone || ""
-  },
+          customer: {
+            first_name: req.body.name || "Customer",
+            phone: req.body.phone || ""
+          },
 
-  shipping_address: {
-    first_name: req.body.name || "Customer",
-    address1: req.body.address || "",
-    phone: req.body.phone || "",
-    country: "Georgia"
-  },
+          shipping_address: {
+            first_name: req.body.name || "Customer",
+            address1: req.body.address || "",
+            phone: req.body.phone || "",
+            country: "Georgia"
+          },
 
-  note: `Credo Order
+          note: `Credo Order
 Name: ${req.body.name}
 Phone: ${req.body.phone}
 Address: ${req.body.address}`,
-  
-  use_customer_default_address: false
-}
-          use_customer_default_address: true
+
+          use_customer_default_address: false
         }
       },
       {
@@ -138,10 +145,15 @@ Address: ${req.body.address}`,
 
     const draftOrder = shopifyResponse.data.draft_order;
 
+    // 🔹 Credo
     const credoResponse = await axios.post(
       'https://api.ezzy.ge/api/credo-order',
-      { products },
-      { headers: { 'Content-Type': 'application/json' } }
+      {
+        products
+      },
+      {
+        headers: { 'Content-Type': 'application/json' }
+      }
     );
 
     return res.json({
@@ -156,6 +168,10 @@ Address: ${req.body.address}`,
   }
 });
 
+
+// =======================
+// AUTH (leave as is)
+// =======================
 app.get('/auth/callback', async (req, res) => {
   try {
     const { code, shop } = req.query;
