@@ -12,6 +12,9 @@ app.use(express.json());
 const MERCHANT_ID = "21118";
 const SECRET = "Vq6h3J0+fI";
 
+const SHOP = "ezzy-ge.myshopify.com";
+const ACCESS_TOKEN = "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";
+
 app.get("/", (req, res) => {
   res.status(200).send("OK");
 });
@@ -85,6 +88,50 @@ app.post('/api/credo-order', async (req, res) => {
   } catch (err) {
     return res.status(500).json({
       error: err.message
+    });
+  }
+});
+
+app.post('/api/create-order-and-credo', async (req, res) => {
+  try {
+    const products = req.body.products || [];
+
+    const shopifyResponse = await axios.post(
+      `https://${SHOP}/admin/api/2024-01/draft_orders.json`,
+      {
+        draft_order: {
+          line_items: products.map(p => ({
+            title: p.title,
+            price: p.price,
+            quantity: p.amount || 1
+          })),
+          use_customer_default_address: true
+        }
+      },
+      {
+        headers: {
+          'X-Shopify-Access-Token': ACCESS_TOKEN,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    const draftOrder = shopifyResponse.data.draft_order;
+
+    const credoResponse = await axios.post(
+      'https://api.ezzy.ge/api/credo-order',
+      { products },
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+
+    return res.json({
+      draftOrderId: draftOrder.id,
+      redirectUrl: credoResponse.data.redirectUrl
+    });
+
+  } catch (err) {
+    return res.status(500).json({
+      error: err.response?.data || err.message
     });
   }
 });
