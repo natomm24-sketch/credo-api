@@ -16,6 +16,7 @@ app.get("/", (req, res) => {
   res.status(200).send("OK");
 });
 
+// 👉 CREDO ORDER
 app.post('/api/credo-order', async (req, res) => {
   try {
     const products = Array.isArray(req.body.products) ? req.body.products : [];
@@ -88,5 +89,26 @@ app.post('/api/credo-order', async (req, res) => {
     });
   }
 });
+
+
+// 👉 SHOPIFY TOKEN ENDPOINT (ახალი)
+app.get('/get-shopify-token', async (req, res) => {
+  try {
+    const response = await axios.post(
+      'https://ezzy.ge/admin/oauth/access_token',
+      {
+        client_id: 'af5fb204f41d87764fb313cb873734eb',
+        client_secret: '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',
+        grant_type: 'client_credentials'
+      }
+    );
+
+    res.json(response.data);
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 app.listen(process.env.PORT || 3000);
