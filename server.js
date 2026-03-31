@@ -101,10 +101,9 @@ app.post('/api/create-order-and-credo', async (req, res) => {
       {
         draft_order: {
           line_items: products.map(p => ({
-            title: p.title + " / " + (p.variant || ""),
-            price: (Number(p.price) / 100).toFixed(2),
-            quantity: p.amount || 1
-          })),
+  variant_id: Number(p.id),
+  quantity: p.amount || 1
+})),
           customer: {
             first_name: req.body.name || "Customer"
           },
