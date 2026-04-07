@@ -181,13 +181,13 @@ app.post('/api/tbc-order', async (req, res) => {
       {
         merchantKey: "MerchantIntegrationTesting",
         campaignId: 204,
-        priceTotal: products[0].price,
+        priceTotal: Number(products[0].price),
         currency: "GEL",
         invoiceId: "INV_" + Date.now(),
         products: [
           {
             name: products[0].title,
-            price: products[0].price,
+            price: Number(products[0].price),
             quantity: 1
           }
         ]
