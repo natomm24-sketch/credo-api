@@ -171,6 +171,6 @@ app.get('/auth/callback', async (req, res) => {
 });
 
 app.listen(process.env.PORT || 3000);
-app.post('/api/tbc-order', async (req, res) => {
+app.get('/api/tbc-order', async (req, res) => {
   res.json({ message: "TBC endpoint ready" });
 });
