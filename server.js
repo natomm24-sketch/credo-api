@@ -212,8 +212,28 @@ Address: ${req.body.address}`,
 
     return res.json({
       draftOrderId: draftOrder.id,
-      redirectUrl: "https://tbcpayments.ge/checkout"
-    });
+      const response = await axios.post(
+  'https://api.tbcbank.ge/v1/online/installments/applications',
+  {
+    merchantKey: "MerchantIntegrationTesting",
+    campaignId: 204,
+    amount: products[0].price,
+    currency: "GEL",
+    description: products[0].title,
+    successUrl: "https://ezzy.ge/success",
+    failUrl: "https://ezzy.ge/fail"
+  },
+  {
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': 'HH5Jiu9Ldzk6ka7m4NvPrSYW9Nk2ezEH'
+    }
+  }
+);
+
+return res.json({
+  redirectUrl: response.data.redirectUrl
+});
 
   } catch (err) {
     return res.status(500).json({
