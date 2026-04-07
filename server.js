@@ -15,6 +15,10 @@ const SECRET = "Vq6h3J0+fI";
 const SHOP = "ezzy-ge.myshopify.com";
 const ACCESS_TOKEN = "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";
 
+const TBC_API_KEY = " HH5Jiu9Ldzk6ka7m4NvPrSYW9Nk2ezEH";
+const TBC_API_SECRET = " XGlVzNoHWuthRLaO";
+
+
 app.get("/", (req, res) => {
   res.status(200).send("OK");
 });
@@ -151,7 +155,63 @@ Address: ${req.body.address}`,
     });
   }
 });
+/* ===================== TBC ===================== */
 
-/* ===================== START ===================== */
+app.post('/api/tbc-order', async (req, res) => {
+  try {
+    const products = req.body.products || [];
+
+    /* TOKEN */
+    const tokenResponse = await axios.post(
+      'https://api.tbcbank.ge/oauth/token',
+      qs.stringify({ grant_type: 'client_credentials' }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': 'Basic ' + Buffer.from(TBC_API_KEY + ':' + TBC_API_SECRET).toString('base64')
+        }
+      }
+    );
+
+    const accessToken = tokenResponse.data.access_token;
+
+    /* INSTALLMENT */
+    const tbcResponse = await axios.post(
+      'https://api.tbcbank.ge/v1/online/installments/applications',
+      {
+        merchantKey: "MerchantIntegrationTesting",
+        campaignId: 204,
+        priceTotal: products[0].price,
+        currency: "GEL",
+        invoiceId: "INV_" + Date.now(),
+        products: [
+          {
+            name: products[0].title,
+            price: products[0].price,
+            quantity: 1
+          }
+        ]
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        maxRedirects: 0,
+        validateStatus: () => true
+      }
+    );
+
+    return res.json({
+      redirectUrl: tbcResponse.headers.location
+    });
+
+  } catch (err) {
+    console.log("TBC ERROR:", err.response?.data || err.message);
+    return res.status(500).json({
+      error: err.response?.data || err.message
+    });
+  }
+});
 
 app.listen(process.env.PORT || 3000);
