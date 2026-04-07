@@ -203,7 +203,7 @@ app.post('/api/tbc-order', async (req, res) => {
     );
 
     return res.json({
-      redirectUrl: tbcResponse.headers.location
+      redirectUrl: tbcResponse.data.redirectUrl
     });
 
   } catch (err) {
