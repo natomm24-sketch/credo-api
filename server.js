@@ -135,7 +135,7 @@ Address: ${req.body.address}`,
     const draftOrder = shopifyResponse.data.draft_order;
 
     const credoResponse = await axios.post(
-      'http://localhost:3000/api/credo-order',
+      'https://api.ezzy.ge/api/credo-order',
       { products },
       { headers: { 'Content-Type': 'application/json' } }
     );
