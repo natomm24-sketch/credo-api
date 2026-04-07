@@ -234,7 +234,7 @@ Address: ${req.body.address}`,
 return res.json({
   redirectUrl: response.data.redirectUrl
 });
-
+});
   } catch (err) {
     return res.status(500).json({
       error: err.response?.data || err.message
