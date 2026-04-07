@@ -15,8 +15,8 @@ const SECRET = "Vq6h3J0+fI";
 const SHOP = "ezzy-ge.myshopify.com";
 const ACCESS_TOKEN = "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";
 
-const TBC_API_KEY = " HH5Jiu9Ldzk6ka7m4NvPrSYW9Nk2ezEH";
-const TBC_API_SECRET = " XGlVzNoHWuthRLaO";
+const TBC_API_KEY = "HH5Jiu9Ldzk6ka7m4NvPrSYW9Nk2ezEH";
+const TBC_API_SECRET = "XGlVzNoHWuthRLaO";
 
 
 app.get("/", (req, res) => {
