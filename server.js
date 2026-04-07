@@ -181,16 +181,15 @@ app.post('/api/tbc-order', async (req, res) => {
       {
         merchantKey: "MerchantIntegrationTesting",
         campaignId: 204,
-        priceTotal: Number(products[0].price),
+        priceTotal: Number(products.reduce((sum, p) => sum + (p.price * (p.amount || 1)), 0)),
         currency: "GEL",
         invoiceId: "INV_" + Date.now(),
-        products: [
-          {
-            name: products[0].title,
-            price: Number(products[0].price),
-            quantity: 1
-          }
-        ]
+        products: products.map(p => ({
+  name: p.title || "Product",
+  price: p.price,
+  quantity: p.amount || 1
+}))
+        
       },
       {
         headers: {
