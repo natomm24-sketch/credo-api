@@ -19,6 +19,8 @@ app.get("/", (req, res) => {
   res.status(200).send("OK");
 });
 
+/* ===================== CREDO ===================== */
+
 app.post('/api/credo-order', async (req, res) => {
   try {
     const products = Array.isArray(req.body.products) ? req.body.products : [];
@@ -38,15 +40,12 @@ app.post('/api/credo-order', async (req, res) => {
     });
     stringToHash += SECRET;
 
-    const check = crypto
-      .createHash('md5')
-      .update(stringToHash)
-      .digest('hex');
+    const check = crypto.createHash('md5').update(stringToHash).digest('hex');
 
     const data = {
       merchantId: MERCHANT_ID,
-      orderCode: orderCode,
-      check: check,
+      orderCode,
+      check,
       installmentLength: 12
     };
 
@@ -62,9 +61,7 @@ app.post('/api/credo-order', async (req, res) => {
       'https://ganvadeba.credo.ge/widget_api/index.php',
       qs.stringify(data),
       {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         maxRedirects: 0,
         validateStatus: () => true
       }
@@ -73,24 +70,19 @@ app.post('/api/credo-order', async (req, res) => {
     let redirectUrl =
       response.headers.location ||
       (response.headers.refresh && response.headers.refresh.includes('url=') ? response.headers.refresh.split('url=')[1] : null) ||
-      (response.data && response.data.URL) ||
-      (response.data && response.data.data && response.data.data.URL);
+      response.data?.URL ||
+      response.data?.data?.URL;
 
-    if (redirectUrl) {
-      return res.json({ redirectUrl });
-    }
+    if (redirectUrl) return res.json({ redirectUrl });
 
-    return res.status(400).json({
-      error: "No redirect URL",
-      bankResponse: response.data
-    });
+    return res.status(400).json({ error: "No redirect URL" });
 
   } catch (err) {
-    return res.status(500).json({
-      error: err.response?.data || err.message
-    });
+    return res.status(500).json({ error: err.message });
   }
 });
+
+/* ===================== CREDO + SHOPIFY ===================== */
 
 app.post('/api/create-order-and-credo', async (req, res) => {
   try {
@@ -101,22 +93,17 @@ app.post('/api/create-order-and-credo', async (req, res) => {
       {
         draft_order: {
           line_items: products.map(p => ({
-  variant_id: Number(p.id),
-  quantity: p.amount || 1
-})),
-          customer: {
-            first_name: req.body.name || "Customer"
-          },
+            variant_id: Number(p.id),
+            quantity: p.amount || 1
+          })),
+          customer: { first_name: req.body.name || "Customer" },
           shipping_address: {
             first_name: req.body.name || "Customer",
             address1: req.body.address || "",
             phone: req.body.phone || "",
             country: "Georgia"
           },
-          note: `Credo Order
-Name: ${req.body.name}
-Phone: ${req.body.phone}
-Address: ${req.body.address}`,
+          note: `Credo Order`,
           use_customer_default_address: false
         }
       },
@@ -142,40 +129,17 @@ Address: ${req.body.address}`,
     });
 
   } catch (err) {
-    return res.status(500).json({
-      error: err.response?.data || err.message
-    });
+    return res.status(500).json({ error: err.message });
   }
 });
 
-app.get('/auth/callback', async (req, res) => {
-  try {
-    const { code, shop } = req.query;
+/* ===================== TBC ===================== */
 
-    const response = await axios.post(
-      `https://${shop}/admin/oauth/access_token`,
-      {
-        client_id: 'af5fb204f41d87764fb313cb873734eb',
-        client_secret: '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',
-        code: code
-      }
-    );
-
-    res.json(response.data);
-
-  } catch (err) {
-    res.status(500).json({
-      error: err.response?.data || err.message
-    });
-  }
-});
-
-app.listen(process.env.PORT || 3000);
 app.post('/api/tbc-order', async (req, res) => {
   try {
-
     const products = req.body.products || [];
 
+    /* 1. Shopify order */
     const shopifyResponse = await axios.post(
       `https://${SHOP}/admin/api/2024-01/draft_orders.json`,
       {
@@ -184,19 +148,14 @@ app.post('/api/tbc-order', async (req, res) => {
             variant_id: Number(p.id),
             quantity: p.amount || 1
           })),
-          customer: {
-            first_name: req.body.name || "Customer"
-          },
+          customer: { first_name: req.body.name || "Customer" },
           shipping_address: {
             first_name: req.body.name || "Customer",
             address1: req.body.address || "",
             phone: req.body.phone || "",
             country: "Georgia"
           },
-          note: `TBC Order
-Name: ${req.body.name}
-Phone: ${req.body.phone}
-Address: ${req.body.address}`,
+          note: `TBC Order`,
           use_customer_default_address: false
         }
       },
@@ -210,34 +169,42 @@ Address: ${req.body.address}`,
 
     const draftOrder = shopifyResponse.data.draft_order;
 
+    /* 2. TBC API */
+    const tbcResponse = await axios.post(
+      'https://api.tbcbank.ge/v1/online/installments/applications',
+      {
+        merchantKey: "MerchantIntegrationTesting",
+        campaignId: 204,
+        amount: products[0].price,
+        currency: "GEL",
+        description: products[0].title,
+        successUrl: "https://ezzy.ge/success",
+        failUrl: "https://ezzy.ge/fail"
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': 'HH5Jiu9Ldzk6ka7m4NvPrSYW9Nk2ezEH'
+        }
+      }
+    );
+
+    /* 3. redirect */
     return res.json({
       draftOrderId: draftOrder.id,
-      const response = await axios.post(
-  'https://api.tbcbank.ge/v1/online/installments/applications',
-  {
-    merchantKey: "MerchantIntegrationTesting",
-    campaignId: 204,
-    amount: products[0].price,
-    currency: "GEL",
-    description: products[0].title,
-    successUrl: "https://ezzy.ge/success",
-    failUrl: "https://ezzy.ge/fail"
-  },
-  {
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': 'HH5Jiu9Ldzk6ka7m4NvPrSYW9Nk2ezEH'
-    }
-  }
-);
+      redirectUrl: tbcResponse.data.redirectUrl
+    });
 
-return res.json({
-  redirectUrl: response.data.redirectUrl
-});
-});
   } catch (err) {
+    console.log(err.response?.data || err.message);
     return res.status(500).json({
       error: err.response?.data || err.message
     });
   }
+});
+
+/* ===================== START ===================== */
+
+app.listen(process.env.PORT || 3000, () => {
+  console.log("Server running...");
 });
