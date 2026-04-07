@@ -177,7 +177,7 @@ app.post('/api/tbc-order', async (req, res) => {
 
     /* INSTALLMENT */
     const tbcResponse = await axios.post(
-      'https://api.tbcbank.ge/v1/online/installments',
+      'https://api.tbcbank.ge/sandbox/v1/online/installments/applications',
       {
         merchantKey: "MerchantIntegrationTesting",
         campaignId: 204,
