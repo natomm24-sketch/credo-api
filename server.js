@@ -192,7 +192,7 @@ app.post('/api/tbc-order', async (req, res) => {
     /* 3. redirect */
     return res.json({
       draftOrderId: draftOrder.id,
-      redirectUrl: tbcResponse.data._links?.redirect?.href
+      redirectUrl: tbcResponse.headers.location
     });
 
   } catch (err) {
