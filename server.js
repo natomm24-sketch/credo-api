@@ -9,6 +9,8 @@ const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
+/* ===================== CONFIG ===================== */
+
 const MERCHANT_ID = "21118";
 const SECRET = "Vq6h3J0+fI";
 
@@ -16,7 +18,9 @@ const SHOP = "ezzy-ge.myshopify.com";
 const ACCESS_TOKEN = "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";
 
 const TBC_API_KEY = "HH5Jiu9Ldzk6ka7m4NvPrSYW9Nk2ezEH";
-const TBC_API_SECRET = "XGlVzNoHWuthRLaO"; 
+const TBC_API_SECRET = "XGlVzNoHWuthRLaO";
+
+/* ===================== ROOT ===================== */
 
 app.get("/", (req, res) => {
   res.status(200).send("OK");
@@ -84,6 +88,60 @@ app.post('/api/credo-order', async (req, res) => {
   }
 });
 
+/* 🔥 ეს არის შენი ძველი working flow — არ ვეხებით */
+app.post('/api/create-order-and-credo', async (req, res) => {
+  try {
+    const products = req.body.products || [];
+
+    const shopifyResponse = await axios.post(
+      `https://${SHOP}/admin/api/2024-01/draft_orders.json`,
+      {
+        draft_order: {
+          line_items: products.map(p => ({
+            variant_id: Number(p.id),
+            quantity: p.amount || 1
+          })),
+          customer: {
+            first_name: req.body.name || "Customer"
+          },
+          shipping_address: {
+            first_name: req.body.name || "Customer",
+            address1: req.body.address || "",
+            phone: req.body.phone || "",
+            country: "Georgia"
+          },
+          note: `Credo Order`,
+          use_customer_default_address: false
+        }
+      },
+      {
+        headers: {
+          'X-Shopify-Access-Token': ACCESS_TOKEN,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    const draftOrder = shopifyResponse.data.draft_order;
+
+    const credoResponse = await axios.post(
+      'https://api.ezzy.ge/api/credo-order',
+      { products },
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+
+    return res.json({
+      draftOrderId: draftOrder.id,
+      redirectUrl: credoResponse.data.redirectUrl
+    });
+
+  } catch (err) {
+    return res.status(500).json({
+      error: err.response?.data || err.message
+    });
+  }
+});
+
 /* ===================== TBC ===================== */
 
 app.post('/api/tbc-order', async (req, res) => {
@@ -120,20 +178,21 @@ app.post('/api/tbc-order', async (req, res) => {
 
     const draftOrder = shopifyResponse.data.draft_order;
 
-    /* 2. GET ACCESS TOKEN */
+    /* 2. TOKEN */
     const tokenResponse = await axios.post(
-      'https://api.tbcbank.ge/v1/tokens',
+      'https://api.tbcbank.ge/oauth/token',
+      qs.stringify({ grant_type: 'client_credentials' }),
       {
-        apiKey: TBC_API_KEY,
-        apiSecret: TBC_API_SECRET
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': 'Basic ' + Buffer.from(TBC_API_KEY + ':' + TBC_API_SECRET).toString('base64')
+        }
       }
     );
 
     const accessToken = tokenResponse.data.access_token;
 
-    console.log("TOKEN:", accessToken);
-
-    /* 3. CREATE INSTALLMENT */
+    /* 3. INSTALLMENT */
     const tbcResponse = await axios.post(
       'https://api.tbcbank.ge/v1/online/installments/applications',
       {
@@ -154,16 +213,24 @@ app.post('/api/tbc-order', async (req, res) => {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json'
-        }
+        },
+        maxRedirects: 0,
+        validateStatus: () => true
       }
     );
 
-    console.log("TBC HEADERS:", tbcResponse.headers);
+    const redirectUrl = tbcResponse.headers.location;
 
-    /* 4. REDIRECT */
+    if (!redirectUrl) {
+      return res.status(400).json({
+        error: "No redirect from TBC",
+        data: tbcResponse.data
+      });
+    }
+
     return res.json({
       draftOrderId: draftOrder.id,
-      redirectUrl: tbcResponse.headers.location
+      redirectUrl
     });
 
   } catch (err) {
