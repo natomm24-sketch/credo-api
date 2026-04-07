@@ -212,7 +212,7 @@ Address: ${req.body.address}`,
 
     return res.json({
       draftOrderId: draftOrder.id,
-      redirectUrl: "https://google.com"
+      redirectUrl: "https://tbcpayments.ge/checkout"
     });
 
   } catch (err) {
