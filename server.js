@@ -200,7 +200,10 @@ app.post('/api/tbc-order', async (req, res) => {
         validateStatus: () => true
       }
     );
-
+    
+console.log("TBC RESPONSE DATA:", tbcResponse.data);
+        console.log("FULL RESPONSE:", tbcResponse);
+    
     return res.json({
       redirectUrl: tbcResponse.data.redirectUrl
     });
