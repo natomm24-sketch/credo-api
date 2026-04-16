@@ -205,8 +205,16 @@ console.log("TBC RESPONSE DATA:", tbcResponse.data);
         console.log("FULL RESPONSE:", tbcResponse);
     
     return res.json({
-      redirectUrl: tbcResponse.data.redirectUrl
-    });
+      const redirectUrl =
+  tbcResponse.data.links?.redirect ||
+  tbcResponse.data.redirect ||
+  tbcResponse.data.url;
+
+return res.json({
+  draftOrderId: draftOrder.id,
+  redirectUrl
+});
+    
 
   } catch (err) {
     console.log("TBC ERROR:", err.response?.data || err.message);
