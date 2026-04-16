@@ -159,7 +159,11 @@ Address: ${req.body.address}`,
 
 app.post('/api/tbc-order', async (req, res) => {
   try {
-    const products = req.body.products || [];
+    const products = Array.isArray(req.body.products) ? req.body.products : [];
+
+    if (products.length === 0) {
+      return res.status(400).json({ error: "No products" });
+    }
 
     /* TOKEN */
     const tokenResponse = await axios.post(
@@ -176,42 +180,46 @@ app.post('/api/tbc-order', async (req, res) => {
     const accessToken = tokenResponse.data.access_token;
 
     /* INSTALLMENT */
-   const tbcResponse = await axios.post(
-  'https://api.tbcbank.ge/v1/online/installments/applications',
-  {
-    merchantKey: "405757140-c326230e-e884-4565-be96-d41349469b31",
-    campaignId: 529,
-    priceTotal: Number(products.reduce((sum, p) => sum + (p.price * (p.amount || 1)), 0)),
-    currency: "GEL",
-    invoiceId: "INV_" + Date.now(),
-    products: products.map(p => ({
-      name: p.title || "Product",
-      price: Number(p.price),
-      quantity: Number(p.amount) || 1
-    }))
-  },
-  {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json'
+    const tbcResponse = await axios.post(
+      'https://api.tbcbank.ge/v1/online/installments/applications',
+      {
+        merchantKey: "405757140-c326230e-e884-4565-be96-d41349469b31",
+        campaignId: 529,
+        priceTotal: Number(products.reduce((sum, p) => sum + (Number(p.price) * (Number(p.amount) || 1)), 0)),
+        currency: "GEL",
+        invoiceId: "INV_" + Date.now(),
+        products: products.map(p => ({
+          name: p.title || "Product",
+          price: Number(p.price),
+          quantity: Number(p.amount) || 1
+        }))
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        maxRedirects: 0,
+        validateStatus: () => true
+      }
+    );
+
+    console.log("STATUS:", tbcResponse.status);
+    console.log("HEADERS:", tbcResponse.headers);
+    console.log("DATA:", tbcResponse.data);
+
+    const redirectUrl = tbcResponse.headers.location;
+
+    if (!redirectUrl) {
+      return res.status(400).json({
+        error: "No redirect URL",
+        status: tbcResponse.status,
+        headers: tbcResponse.headers,
+        data: tbcResponse.data
+      });
     }
-  }
-);
 
-console.log("HEADERS:", tbcResponse.headers);
-console.log("DATA:", tbcResponse.data);
-
-const redirectUrl = tbcResponse.headers.location;
-
-if (!redirectUrl) {
-  return res.status(400).json({
-    error: "No redirect URL",
-    headers: tbcResponse.headers,
-    data: tbcResponse.data
-  });
-}
-
-return res.json({ redirectUrl });
+    return res.json({ redirectUrl });
 
   } catch (err) {
     console.log("TBC ERROR:", err.response?.data || err.message);
