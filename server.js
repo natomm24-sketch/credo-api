@@ -159,6 +159,9 @@ Address: ${req.body.address}`,
 
 app.post('/api/tbc-order', async (req, res) => {
   try {
+     console.log("FULL BODY:", req.body);
+    console.log("PRODUCTS FROM FRONT:", req.body.products);
+    
     const products = Array.isArray(req.body.products) ? req.body.products : [];
 
     if (products.length === 0) {
