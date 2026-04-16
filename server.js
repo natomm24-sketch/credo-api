@@ -181,7 +181,7 @@ app.post('/api/tbc-order', async (req, res) => {
 
     /* INSTALLMENT */
     const tbcResponse = await axios.post(
-      'https://api.tbcbank.ge/v1/online/installments/applications',
+      'https://api.tbcbank.ge/v1/online-installments/applications',
       {
         merchantKey: "405757140-c326230e-e884-4565-be96-d41349469b31",
         campaignId: 529,
@@ -189,10 +189,10 @@ app.post('/api/tbc-order', async (req, res) => {
         currency: "GEL",
         invoiceId: "INV_" + Date.now(),
         products: products.map(p => ({
-          name: p.title || "Product",
-          price: Number(p.price),
-          quantity: Number(p.amount) || 1
-        }))
+  name: p.title || "Product",
+  price: Number(p.price) * (Number(p.amount) || 1),
+  quantity: Number(p.amount) || 1
+}))
       },
       {
         headers: {
