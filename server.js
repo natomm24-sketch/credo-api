@@ -176,42 +176,36 @@ app.post('/api/tbc-order', async (req, res) => {
     const accessToken = tokenResponse.data.access_token;
 
     /* INSTALLMENT */
-    const tbcResponse = await axios.post(
-      'https://api.tbcbank.ge/v1/online/installments/applications',
-      {
-        merchantKey: "405757140-c326230e-e884-4565-be96-d41349469b31",
-campaignId: 529,
-        priceTotal: Number(products.reduce((sum, p) => sum + (p.price * (p.amount || 1)), 0)),
-        currency: "GEL",
-        invoiceId: "INV_" + Date.now(),
-        products: products.map(p => ({
-  name: p.title || "Product",
-  price: p.price,
-  quantity: p.amount || 1
-}))
-        
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
-        maxRedirects: 0,
-        validateStatus: () => true
-      }
-    );
-    
+   const tbcResponse = await axios.post(
+  'https://api.tbcbank.ge/v1/online/installments/applications',
+  {
+    merchantKey: "405757140-c326230e-e884-4565-be96-d41349469b31",
+    campaignId: 529,
+    priceTotal: Number(products.reduce((sum, p) => sum + (p.price * (p.amount || 1)), 0)),
+    currency: "GEL",
+    invoiceId: "INV_" + Date.now(),
+    products: products.map(p => ({
+      name: p.title || "Product",
+      price: p.price,
+      quantity: p.amount || 1
+    }))
+  },
+  {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    }
+  }
+);
+
 console.log("TBC RESPONSE DATA:", tbcResponse.data);
-        console.log("FULL RESPONSE:", tbcResponse);
-    
-    return res.json({
-      const redirectUrl =
+
+const redirectUrl =
   tbcResponse.data.links?.redirect ||
   tbcResponse.data.redirect ||
   tbcResponse.data.url;
 
 return res.json({
-  draftOrderId: draftOrder.id,
   redirectUrl
 });
     });
