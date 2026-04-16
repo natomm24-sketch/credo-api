@@ -195,7 +195,9 @@ app.post('/api/tbc-order', async (req, res) => {
         currency: "GEL",
         invoiceId: "INV_" + Date.now(),
        products: products.map(p => ({
-  name: p.title || "Product",
+  name: p.product_title 
+  ? `${p.product_title} - ${p.title}`
+  : (p.title || "Product"),
   price: Number(p.price) / 100,
   quantity: Number(p.amount) || 1
 }))
