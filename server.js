@@ -214,7 +214,7 @@ return res.json({
   draftOrderId: draftOrder.id,
   redirectUrl
 });
-    
+    });
 
   } catch (err) {
     console.log("TBC ERROR:", err.response?.data || err.message);
