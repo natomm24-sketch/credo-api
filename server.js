@@ -188,12 +188,15 @@ app.post('/api/tbc-order', async (req, res) => {
       {
         merchantKey: "405757140-c326230e-e884-4565-be96-d41349469b31",
         campaignId: 529,
-        priceTotal: Number(products.reduce((sum, p) => sum + (Number(p.price) * (Number(p.amount) || 1)), 0)),
+        priceTotal: Number(
+  products.reduce((sum, p) => 
+    sum + ((Number(p.price) / 100) * (Number(p.amount) || 1)), 0)
+),
         currency: "GEL",
         invoiceId: "INV_" + Date.now(),
-        products: products.map(p => ({
+       products: products.map(p => ({
   name: p.title || "Product",
-  price: Number(p.price) * (Number(p.amount) || 1),
+  price: Number(p.price) / 100,
   quantity: Number(p.amount) || 1
 }))
       },
