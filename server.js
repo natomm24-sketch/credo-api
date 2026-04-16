@@ -186,8 +186,8 @@ app.post('/api/tbc-order', async (req, res) => {
     invoiceId: "INV_" + Date.now(),
     products: products.map(p => ({
       name: p.title || "Product",
-      price: p.price,
-      quantity: p.amount || 1
+      price: Number(p.price),
+      quantity: Number(p.amount) || 1
     }))
   },
   {
@@ -198,16 +198,20 @@ app.post('/api/tbc-order', async (req, res) => {
   }
 );
 
-console.log("TBC RESPONSE DATA:", tbcResponse.data);
+console.log("HEADERS:", tbcResponse.headers);
+console.log("DATA:", tbcResponse.data);
 
-const redirectUrl =
-  tbcResponse.data.links?.redirect ||
-  tbcResponse.data.redirect ||
-  tbcResponse.data.url;
+const redirectUrl = tbcResponse.headers.location;
 
-return res.json({
-  redirectUrl
-});
+if (!redirectUrl) {
+  return res.status(400).json({
+    error: "No redirect URL",
+    headers: tbcResponse.headers,
+    data: tbcResponse.data
+  });
+}
+
+return res.json({ redirectUrl });
 
   } catch (err) {
     console.log("TBC ERROR:", err.response?.data || err.message);
