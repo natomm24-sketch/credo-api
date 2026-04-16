@@ -208,7 +208,6 @@ const redirectUrl =
 return res.json({
   redirectUrl
 });
-    });
 
   } catch (err) {
     console.log("TBC ERROR:", err.response?.data || err.message);
