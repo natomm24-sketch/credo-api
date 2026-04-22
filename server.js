@@ -236,5 +236,25 @@ app.post('/api/tbc-order', async (req, res) => {
     });
   }
 });
+app.get('/auth/callback', async (req, res) => {
+  try {
+    const { code, shop } = req.query;
 
+    const response = await axios.post(
+      `https://${shop}/admin/oauth/access_token`,
+      {
+        client_id: '3f09333ae04b00e338137653ea48a8e2',
+        client_secret: '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',
+        code: code
+      }
+    );
+
+    res.json(response.data);
+
+  } catch (err) {
+    res.status(500).json({
+      error: err.response?.data || err.message
+    });
+  }
+});
 app.listen(process.env.PORT || 3000);
