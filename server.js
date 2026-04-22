@@ -260,7 +260,7 @@ app.get('/auth/callback', async (req, res) => {
 /* ===================== SHOPIFY + CREDO (COMFORTMIX) ===================== */
 
 const SHOP_COMFORT = "comfortmix.myshopify.com";
-const ACCESS_TOKEN_COMFORT = "აქ ჩასვამ შენს ახალ shpat_token-ს";
+const ACCESS_TOKEN_COMFORT = "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";
 
 app.post('/api/create-order-and-credo-comfortmix', async (req, res) => {
   try {
@@ -309,6 +309,61 @@ Address: ${req.body.address}`,
     return res.json({
       draftOrderId: draftOrder.id,
       redirectUrl: credoResponse.data.redirectUrl
+    });
+
+  } catch (err) {
+    return res.status(500).json({
+      error: err.response?.data || err.message
+    });
+  }
+});
+/* ===================== SHOPIFY + BANK (UNIFIED) ===================== */
+
+app.post('/api/create-order-and-bank', async (req, res) => {
+  try {
+    const { products, bank } = req.body;
+
+    // Shopify order
+    const shopifyResponse = await axios.post(
+      `https://${SHOP_COMFORT}/admin/api/2024-01/draft_orders.json`,
+      {
+        draft_order: {
+          line_items: products.map(p => ({
+            variant_id: Number(p.id),
+            quantity: p.amount || 1
+          }))
+        }
+      },
+      {
+        headers: {
+          'X-Shopify-Access-Token': ACCESS_TOKEN_COMFORT,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    let redirectUrl;
+
+    // 🔥 ბანკის არჩევა
+    if (bank === "izi") {
+      redirectUrl = await sendToCredo({
+        products,
+        merchantId: MERCHANT_ID_IZI,
+        secret: SECRET_IZI
+      });
+    }
+
+    if (bank === "comfort") {
+      redirectUrl = await sendToCredo({
+        products,
+        merchantId: MERCHANT_ID_COMFORT,
+        secret: SECRET_COMFORT
+      });
+    }
+
+    return res.json({
+      draftOrderId: shopifyResponse.data.draft_order.id,
+      redirectUrl
     });
 
   } catch (err) {
