@@ -257,4 +257,64 @@ app.get('/auth/callback', async (req, res) => {
     });
   }
 });
+/* ===================== SHOPIFY + CREDO (COMFORTMIX) ===================== */
+
+const SHOP_COMFORT = "comfortmix.myshopify.com";
+const ACCESS_TOKEN_COMFORT = "აქ ჩასვამ შენს ახალ shpat_token-ს";
+
+app.post('/api/create-order-and-credo-comfortmix', async (req, res) => {
+  try {
+    const products = req.body.products || [];
+
+    const shopifyResponse = await axios.post(
+      `https://${SHOP_COMFORT}/admin/api/2024-01/draft_orders.json`,
+      {
+        draft_order: {
+          line_items: products.map(p => ({
+            variant_id: Number(p.id),
+            quantity: p.amount || 1
+          })),
+          customer: {
+            first_name: req.body.name || "Customer"
+          },
+          shipping_address: {
+            first_name: req.body.name || "Customer",
+            address1: req.body.address || "",
+            phone: req.body.phone || "",
+            country: "Georgia"
+          },
+          note: `Credo Order (Comfortmix)
+Name: ${req.body.name}
+Phone: ${req.body.phone}
+Address: ${req.body.address}`,
+          use_customer_default_address: false
+        }
+      },
+      {
+        headers: {
+          'X-Shopify-Access-Token': ACCESS_TOKEN_COMFORT,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    const draftOrder = shopifyResponse.data.draft_order;
+
+    const credoResponse = await axios.post(
+      'https://api.ezzy.ge/api/credo-order',
+      { products },
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+
+    return res.json({
+      draftOrderId: draftOrder.id,
+      redirectUrl: credoResponse.data.redirectUrl
+    });
+
+  } catch (err) {
+    return res.status(500).json({
+      error: err.response?.data || err.message
+    });
+  }
+});
 app.listen(process.env.PORT || 3000);
