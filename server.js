@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const axios = require('axios');
 const qs = require('qs');
 const Keepz = require('./keepz');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 
@@ -389,9 +390,8 @@ app.post('/api/keepz-order', async (req, res) => {
     const orderData = {
       amount: amount,
       currency: "GEL",
-      const { v4: uuidv4 } = require('uuid');
-
-integratorOrderId: uuidv4(),
+      integratorOrderId: uuidv4(),
+      
       description: "Order from Shopify",
       successUrl: "https://yourdomain.com/success",
       failUrl: "https://yourdomain.com/fail",
