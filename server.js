@@ -388,15 +388,14 @@ app.post('/api/keepz-order', async (req, res) => {
     const keepz = new Keepz(KEEPZ_PUBLIC_KEY, KEEPZ_PRIVATE_KEY);
 
     const orderData = {
-      amount: amount,
-      currency: "GEL",
-      integratorOrderId: uuidv4(),
-      
-      description: "Order from Shopify",
-      successUrl: "https://yourdomain.com/success",
-      failUrl: "https://yourdomain.com/fail",
-      callbackUrl: "https://yourdomain.com/api/keepz-callback"
-    };
+  amount: amount,
+  currency: "GEL",
+  integratorOrderId: uuidv4(),
+
+  successRedirectUri: "https://ezzy.ge",
+  failRedirectUri: "https://ezzy.ge",
+  callbackUri: "https://api.ezzy.ge/api/keepz-callback"
+};
 
     const encrypted = keepz.encrypt(orderData);
 
