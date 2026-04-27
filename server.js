@@ -389,7 +389,9 @@ app.post('/api/keepz-order', async (req, res) => {
     const orderData = {
       amount: amount,
       currency: "GEL",
-      integratorOrderId: "ORD_" + Date.now(),
+      const { v4: uuidv4 } = require('uuid');
+
+integratorOrderId: uuidv4(),
       description: "Order from Shopify",
       successUrl: "https://yourdomain.com/success",
       failUrl: "https://yourdomain.com/fail",
