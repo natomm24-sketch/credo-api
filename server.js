@@ -400,7 +400,7 @@ app.post('/api/keepz-order', async (req, res) => {
     const encrypted = keepz.encrypt(orderData);
 
     const response = await axios.post(
-      "https://api.keepz.me/ecommerce-service/api/integrator/order",
+      "https://gateway.keepz.me/ecommerce-service/api/integrator/order",
       {
         identifier: KEEPZ_INTEGRATOR_ID,
         encryptedData: encrypted.encryptedData,
