@@ -388,28 +388,28 @@ app.post('/api/keepz-order', async (req, res) => {
       return res.status(400).json({ error: "Invalid amount" });
     }
 
+    // თანხის სწორი ფორმატირება
     const amount = parseFloat(Number(rawAmount).toFixed(2));
     console.log("FINAL AMOUNT:", amount);
 
     const keepz = new Keepz(KEEPZ_PUBLIC_KEY, KEEPZ_PRIVATE_KEY);
+    const orderId = uuidv4(); // ცალკე ცვლადად გამოვიტანოთ შესანახად
 
     const orderData = {
       amount: amount,
       currency: "GEL",
-
       integratorId: KEEPZ_INTEGRATOR_ID,
-      integratorOrderId: uuidv4(),
-
+      integratorOrderId: orderId,
       receiverId: "d10d0e01-e70f-41eb-b7ba-8fd14e425f3f",
       receiverType: "BRANCH",
-
+      // directLinkProvider ამოღებულია ფერმიშენის შეცდომის გამო
       language: "KA",
-
       successRedirectUri: "https://ezzy.ge",
       failRedirectUri: "https://ezzy.ge",
       callbackUri: "https://api.ezzy.ge/api/keepz-callback"
     };
 
+    // მონაცემების დაშიფვრა გაგზავნამდე
     const encrypted = keepz.encrypt(orderData);
 
     const response = await axios.post(
@@ -427,19 +427,30 @@ app.post('/api/keepz-order', async (req, res) => {
       }
     );
 
-    console.log("RAW KEEPZ RESPONSE:", response.data);
+    console.log("RAW KEEPZ RESPONSE (Encrypted):", response.data);
 
-    // ❗ აღარ decrypt — პირდაპირ აბრუნე
+    // ✅ აუცილებელი ნაბიჯი: პასუხის გაშიფვრა redirectUrl-ის მისაღებად
+    let decryptedResponse;
+    try {
+      decryptedResponse = keepz.decrypt(response.data.encryptedData, response.data.encryptedKeys);
+      console.log("DECRYPTED SUCCESS:", decryptedResponse);
+    } catch (decryptError) {
+      console.error("DECRYPTION ERROR:", decryptError);
+      return res.status(500).json({ error: "Failed to decrypt Keepz response" });
+    }
+
+    // ფრონტს ვუბრუნებთ უკვე სუფთა ლინკს
     return res.json({
-      redirectUrl: response.data.redirectUrl,
-      urlForQR: response.data.urlForQR,
-      full: response.data
+      redirectUrl: decryptedResponse.redirectUrl,
+      urlForQR: decryptedResponse.urlForQR,
+      orderId: orderId
     });
 
   } catch (err) {
-    console.log("KEEPZ ERROR:", err.response?.data || err.message);
+    const errorMsg = err.response?.data || err.message;
+    console.error("KEEPZ API ERROR:", errorMsg);
     return res.status(500).json({
-      error: err.response?.data || err.message
+      error: errorMsg
     });
   }
 });
