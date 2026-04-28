@@ -402,6 +402,7 @@ app.post('/api/keepz-order', async (req, res) => {
       integratorOrderId: orderId,
       receiverId: "d10d0e01-e70f-41eb-b7ba-8fd14e425f3f", // დავაბრუნეთ ძველი სახელი
       receiverType: "BRANCH", // აუცილებლად დიდი ასოებით
+      subAccount: "CHV3tiBV",
       directLinkProvider: "CREDO", // საფორთის დადასტურებული
     
       language: "KA",
