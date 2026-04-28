@@ -406,18 +406,18 @@ app.post('/api/keepz-order', async (req, res) => {
     const encrypted = keepz.encrypt(orderData);
 
     const response = await axios.post(
-      "https://gateway.keepz.me/ecommerce-service/api/integrator/order",
-      {
-        identifier: KEEPZ_INTEGRATOR_ID,
-        encryptedData: encrypted.encryptedData,
-        encryptedKeys: encrypted.encryptedKeys,
-        aes: true
-      }
-    );
+  "https://gateway.keepz.me/ecommerce-service/api/integrator/order",
+  {
+    identifier: KEEPZ_INTEGRATOR_ID,
+    encryptedData: encrypted.encryptedData,
+    encryptedKeys: encrypted.encryptedKeys,
+    aes: true
+  }
+);
 
-    return res.json({
-      redirectUrl: response.data.redirectUrl
-    });
+console.log("KEEPZ RESPONSE:", response.data);
+
+return res.json(response.data);
 
   } catch (err) {
     console.log("KEEPZ ERROR:", err.response?.data || err.message);
