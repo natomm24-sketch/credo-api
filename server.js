@@ -378,29 +378,41 @@ app.post('/api/create-order-and-bank', async (req, res) => {
     });
   }
 });
+app.use(express.json()); // ❗ აუცილებელია
+
 app.post('/api/keepz-order', async (req, res) => {
   try {
     console.log("REQ BODY:", req.body);
-    const amount = Math.max(1, Number(req.body.amount));
+
+    // ✅ სწორი amount
+    const rawAmount = req.body.amount;
+
+    if (!rawAmount || isNaN(rawAmount)) {
+      return res.status(400).json({ error: "Invalid amount" });
+    }
+
+    const amount = parseFloat(Number(rawAmount).toFixed(2));
+
+    console.log("FINAL AMOUNT:", amount);
 
     const keepz = new Keepz(KEEPZ_PUBLIC_KEY, KEEPZ_PRIVATE_KEY);
 
     const orderData = {
-  amount: amount,
-  currency: "GEL",
+      amount: amount,
+      currency: "GEL",
 
-  integratorId: KEEPZ_INTEGRATOR_ID,
-  integratorOrderId: uuidv4(),
+      integratorId: KEEPZ_INTEGRATOR_ID,
+      integratorOrderId: uuidv4(),
 
-  receiverId: "d10d0e01-e70f-41eb-b7ba-8fd14e425f3f",
-  receiverType: "BRANCH",
+      receiverId: "d10d0e01-e70f-41eb-b7ba-8fd14e425f3f",
+      receiverType: "BRANCH",
 
-  language: "KA",
+      language: "KA",
 
-  successRedirectUri: "https://ezzy.ge",
-  failRedirectUri: "https://ezzy.ge",
-  callbackUri: "https://api.ezzy.ge/api/keepz-callback"
-};
+      successRedirectUri: "https://ezzy.ge",
+      failRedirectUri: "https://ezzy.ge",
+      callbackUri: "https://api.ezzy.ge/api/keepz-callback"
+    };
 
     const encrypted = keepz.encrypt(orderData);
 
