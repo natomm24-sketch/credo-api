@@ -254,7 +254,8 @@ app.get('/auth/callback', async (req, res) => {
       }
     );
 
-    res.json(response.data);
+    console.log("KEEPZ RESPONSE:", response.data);
+res.json(response.data);
 
   } catch (err) {
     res.status(500).json({
