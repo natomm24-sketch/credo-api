@@ -107,7 +107,7 @@ app.post('/api/credo-order', async (req, res) => {
 
 app.post('/api/create-order-and-credo', async (req, res) => {
   try {
-    const products = req.body.products || [];
+    const amount = Number(req.body.amount);
 
     const shopifyResponse = await axios.post(
       `https://${SHOP}/admin/api/2024-01/draft_orders.json`,
@@ -380,77 +380,56 @@ app.post('/api/create-order-and-bank', async (req, res) => {
 });
 app.post('/api/keepz-order', async (req, res) => {
   try {
-    const products = req.body.products || [];
-
-    const amount = products.reduce((sum, p) =>
-      sum + (Number(p.price) * (Number(p.amount) || 1)), 0
-    );
+    const amount = Math.max(1, Number(req.body.amount));
 
     const keepz = new Keepz(KEEPZ_PUBLIC_KEY, KEEPZ_PRIVATE_KEY);
 
-  const orderData = {
-  amount: Math.max(1, Number(amount)),
-  currency: "GEL",
+    const orderData = {
+      amount: amount,
+      currency: "GEL",
 
-  integratorId: "5e03f8e2-8eb8-42ff-9175-56a53a4dd96c",
-  integratorOrderId: uuidv4(),
+      integratorId: KEEPZ_INTEGRATOR_ID,
+      integratorOrderId: uuidv4(),
 
-  receiverId: "d10d0e01-e70f-41eb-b7ba-8fd14e425f3f",
-  receiverType: "BRANCH",
+      receiverId: "d10d0e01-e70f-41eb-b7ba-8fd14e425f3f",
+      receiverType: "BRANCH",
 
-  successRedirectUri: "https://ezzy.ge",
-  failRedirectUri: "https://ezzy.ge",
-  callbackUri: "https://api.ezzy.ge/api/keepz-callback"
-};
+      successRedirectUri: "https://ezzy.ge",
+      failRedirectUri: "https://ezzy.ge",
+      callbackUri: "https://api.ezzy.ge/api/keepz-callback"
+    };
 
     const encrypted = keepz.encrypt(orderData);
 
     const response = await axios.post(
-  "https://gateway.keepz.me/ecommerce-service/api/integrator/order",
-  {
-    identifier: KEEPZ_INTEGRATOR_ID,
-    encryptedData: encrypted.encryptedData,
-    encryptedKeys: encrypted.encryptedKeys,
-    aes: true
-  },
-  {
-    headers: {
-      "Content-Type": "application/json"
-    }
-  }
-);
+      "https://gateway.keepz.me/ecommerce-service/api/integrator/order",
+      {
+        identifier: KEEPZ_INTEGRATOR_ID,
+        encryptedData: encrypted.encryptedData,
+        encryptedKeys: encrypted.encryptedKeys,
+        aes: true
+      },
+      {
+        headers: {
+          "Content-Type": "application/json"
+        }
+      }
+    );
 
-const decrypted = keepz.decrypt(
-  response.data.encryptedData,
-  response.data.encryptedKeys
-);
+    const decrypted = keepz.decrypt(
+      response.data.encryptedData,
+      response.data.encryptedKeys
+    );
 
-console.log("DECRYPTED:", decrypted);
+    console.log("DECRYPTED:", decrypted);
 
-return res.json(decrypted);
+    return res.json(decrypted);
 
   } catch (err) {
     console.log("KEEPZ ERROR:", err.response?.data || err.message);
     return res.status(500).json({
       error: err.response?.data || err.message
     });
-  }
-});
-app.post('/api/keepz-callback', (req, res) => {
-  try {
-    const { encryptedData, encryptedKeys } = req.body;
-
-    const keepz = new Keepz(KEEPZ_PUBLIC_KEY, KEEPZ_PRIVATE_KEY);
-
-    const data = keepz.decrypt(encryptedData, encryptedKeys);
-
-    console.log("KEEPZ CALLBACK:", data);
-
-    res.sendStatus(200);
-
-  } catch (err) {
-    console.log("CALLBACK ERROR:", err.message);
-    res.sendStatus(500);
   }
 });
 app.listen(process.env.PORT || 3000);
