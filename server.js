@@ -401,7 +401,7 @@ app.post('/api/keepz-order', async (req, res) => {
       integratorId: KEEPZ_INTEGRATOR_ID,
       integratorOrderId: orderId,
       receiverId: "1b02b811-f2d2-4111-adb4-4d2c6f313e93",
-      receiverType: "merchant",
+      receiverType: "MERCHANT",
       // directLinkProvider ამოღებულია ფერმიშენის შეცდომის გამო
       language: "KA",
       successRedirectUri: "https://ezzy.ge",
