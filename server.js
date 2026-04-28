@@ -388,7 +388,7 @@ app.post('/api/keepz-order', async (req, res) => {
     const keepz = new Keepz(KEEPZ_PUBLIC_KEY, KEEPZ_PRIVATE_KEY);
 
   const orderData = {
-  amount: amount,
+  amount: Math.max(1, Number(amount)),
   currency: "GEL",
 
   integratorId: "5e03f8e2-8eb8-42ff-9175-56a53a4dd96c",
