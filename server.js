@@ -395,15 +395,15 @@ app.post('/api/keepz-order', async (req, res) => {
     const keepz = new Keepz(KEEPZ_PUBLIC_KEY, KEEPZ_PRIVATE_KEY);
     const orderId = uuidv4(); // ცალკე ცვლადად გამოვიტანოთ შესანახად
 
-    const orderData = {
+   const orderData = {
       amount: amount,
       currency: "GEL",
       integratorId: KEEPZ_INTEGRATOR_ID,
       integratorOrderId: orderId,
-      // Direct Settlement-ისთვის ვიყენებთ beneficiary-ს
-      beneficiaryId: "d10d0e01-e70f-41eb-b7ba-8fd14e425f3f",
-      beneficiaryType: "BRANCH", 
-      directLinkProvider: "CREDO",
+      receiverId: "d10d0e01-e70f-41eb-b7ba-8fd14e425f3f", // დავაბრუნეთ ძველი სახელი
+      receiverType: "BRANCH", // აუცილებლად დიდი ასოებით
+      directLinkProvider: "CREDO", // საფორთის დადასტურებული
+      paymentMethod: "CARD",
       language: "KA",
       successRedirectUri: "https://ezzy.ge",
       failRedirectUri: "https://ezzy.ge",
