@@ -427,19 +427,32 @@ app.post('/api/keepz-order', async (req, res) => {
       }
     );
 
-    console.log("RAW KEEPZ RESPONSE (Encrypted):", response.data);
+    // ... response = await axios.post(...)
 
-    // ✅ აუცილებელი ნაბიჯი: პასუხის გაშიფვრა redirectUrl-ის მისაღებად
+    console.log("RAW KEEPZ RESPONSE FROM SERVER:", response.data);
+
     let decryptedResponse;
     try {
+      // ვშიფრავთ პასუხს
       decryptedResponse = keepz.decrypt(response.data.encryptedData, response.data.encryptedKeys);
-      console.log("DECRYPTED SUCCESS:", decryptedResponse);
+      
+      // ❗ აი ეს ლოგი შეამოწმე ტერმინალში/კონსოლში
+      console.log("FULL DECRYPTED OBJECT:", decryptedResponse); 
+
     } catch (decryptError) {
-      console.error("DECRYPTION ERROR:", decryptError);
-      return res.status(500).json({ error: "Failed to decrypt Keepz response" });
+      console.error("DECRYPTION FAILED:", decryptError);
+      return res.status(500).json({ error: "გაშიფვრის შეცდომა" });
     }
 
-    // ფრონტს ვუბრუნებთ უკვე სუფთა ლინკს
+    // ვამოწმებთ, მოვიდა თუ არა საერთოდ ლინკი
+    if (!decryptedResponse || !decryptedResponse.redirectUrl) {
+      console.error("REDIRECT URL IS MISSING IN DECRYPTED DATA");
+      return res.status(500).json({ 
+        error: "ლინკი არ მოვიდა", 
+        debug: decryptedResponse // დაუბრუნე ფრონტსაც სატესტოდ
+      });
+    }
+
     return res.json({
       redirectUrl: decryptedResponse.redirectUrl,
       urlForQR: decryptedResponse.urlForQR,
