@@ -403,9 +403,6 @@ app.post('/api/keepz-order', async (req, res) => {
       receiverId: "d10d0e01-e70f-41eb-b7ba-8fd14e425f3f",
       receiverType: "BRANCH",
 
-      // 🔥 აქ შეცვალე
-      directLinkProvider: "CREDO",
-
       language: "KA",
 
       successRedirectUri: "https://ezzy.ge",
