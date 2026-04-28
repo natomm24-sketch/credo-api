@@ -400,8 +400,9 @@ app.post('/api/keepz-order', async (req, res) => {
       currency: "GEL",
       integratorId: KEEPZ_INTEGRATOR_ID,
       integratorOrderId: orderId,
-      receiverId: "d10d0e01-e70f-41eb-b7ba-8fd14e425f3f",
-      receiverType: "BRANCH",
+      // Direct Settlement-ისთვის ვიყენებთ beneficiary-ს
+      beneficiaryId: "d10d0e01-e70f-41eb-b7ba-8fd14e425f3f",
+      beneficiaryType: "BRANCH", 
       directLinkProvider: "CREDO",
       language: "KA",
       successRedirectUri: "https://ezzy.ge",
