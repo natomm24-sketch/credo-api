@@ -404,7 +404,7 @@ app.post('/api/keepz-order', async (req, res) => {
       receiverType: "BRANCH",
 
       // 🔥 აქ შეცვალე
-      directLinkProvider: "DEFAULT",
+      directLinkProvider: "CREDO",
 
       language: "KA",
 
