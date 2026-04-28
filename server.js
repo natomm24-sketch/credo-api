@@ -378,13 +378,10 @@ app.post('/api/create-order-and-bank', async (req, res) => {
     });
   }
 });
-app.use(express.json()); // ❗ აუცილებელია
-
 app.post('/api/keepz-order', async (req, res) => {
   try {
     console.log("REQ BODY:", req.body);
 
-    // ✅ სწორი amount
     const rawAmount = req.body.amount;
 
     if (!rawAmount || isNaN(rawAmount)) {
@@ -392,7 +389,6 @@ app.post('/api/keepz-order', async (req, res) => {
     }
 
     const amount = parseFloat(Number(rawAmount).toFixed(2));
-
     console.log("FINAL AMOUNT:", amount);
 
     const keepz = new Keepz(KEEPZ_PUBLIC_KEY, KEEPZ_PRIVATE_KEY);
@@ -406,7 +402,10 @@ app.post('/api/keepz-order', async (req, res) => {
 
       receiverId: "d10d0e01-e70f-41eb-b7ba-8fd14e425f3f",
       receiverType: "BRANCH",
+
+      // 🔥 აქ შეცვალე
       directLinkProvider: "DEFAULT",
+
       language: "KA",
 
       successRedirectUri: "https://ezzy.ge",
@@ -431,14 +430,14 @@ app.post('/api/keepz-order', async (req, res) => {
       }
     );
 
-    const decrypted = keepz.decrypt(
-      response.data.encryptedData,
-      response.data.encryptedKeys
-    );
+    console.log("RAW KEEPZ RESPONSE:", response.data);
 
-    console.log("DECRYPTED:", decrypted);
-
-    return res.json(decrypted);
+    // ❗ აღარ decrypt — პირდაპირ აბრუნე
+    return res.json({
+      redirectUrl: response.data.redirectUrl,
+      urlForQR: response.data.urlForQR,
+      full: response.data
+    });
 
   } catch (err) {
     console.log("KEEPZ ERROR:", err.response?.data || err.message);
