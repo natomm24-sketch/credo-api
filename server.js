@@ -412,12 +412,22 @@ app.post('/api/keepz-order', async (req, res) => {
     encryptedData: encrypted.encryptedData,
     encryptedKeys: encrypted.encryptedKeys,
     aes: true
+  },
+  {
+    headers: {
+      "Content-Type": "application/json"
+    }
   }
 );
 
-console.log("KEEPZ RESPONSE:", response.data);
+const decrypted = keepz.decrypt(
+  response.data.encryptedData,
+  response.data.encryptedKeys
+);
 
-return res.json(response.data);
+console.log("DECRYPTED:", decrypted);
+
+return res.json(decrypted);
 
   } catch (err) {
     console.log("KEEPZ ERROR:", err.response?.data || err.message);
