@@ -387,10 +387,15 @@ app.post('/api/keepz-order', async (req, res) => {
 
     const keepz = new Keepz(KEEPZ_PUBLIC_KEY, KEEPZ_PRIVATE_KEY);
 
-    const orderData = {
+  const orderData = {
   amount: amount,
   currency: "GEL",
+
+  integratorId: "5e03f8e2-8eb8-42ff-9175-56a53a4dd96c",
   integratorOrderId: uuidv4(),
+
+  receiverId: "d10d0e01-e70f-41eb-b7ba-8fd14e425f3f",
+  receiverType: "BRANCH",
 
   successRedirectUri: "https://ezzy.ge",
   failRedirectUri: "https://ezzy.ge",
