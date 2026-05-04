@@ -392,11 +392,25 @@ app.post('/api/keepz-order', async (req, res) => {
     }
 
     // 🔒 თანხის დაცული გამოთვლა backend-ზე
-    const amount = Number(
-      products.reduce((sum, p) => {
-        return sum + ((Number(p.price) / 100) * (Number(p.amount) || 1));
-      }, 0).toFixed(2)
-    );
+    let total = 0;
+
+for (const p of products) {
+
+  const shopifyRes = await axios.get(
+    `https://${SHOP}/admin/api/2024-01/variants/${p.id}.json`,
+    {
+      headers: {
+        'X-Shopify-Access-Token': ACCESS_TOKEN
+      }
+    }
+  );
+
+  const realPrice = Number(shopifyRes.data.variant.price);
+
+  total += realPrice * (Number(p.amount) || 1);
+}
+
+const amount = Number(total.toFixed(2));
 
     if (!amount || isNaN(amount)) {
       return res.status(400).json({ error: "Invalid amount" });
