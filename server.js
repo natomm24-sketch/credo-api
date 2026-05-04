@@ -473,12 +473,23 @@ const amount = Number(total.toFixed(2));
       return res.status(500).json({ error: "Decryption failed" });
     }
 
-    if (!decrypted?.redirectUrl) {
-      return res.status(500).json({
-        error: "No redirect URL",
-        debug: decrypted
-      });
-    }
+const redirect =
+  decrypted?.redirectUrl ||
+  decrypted?.paymentUrl ||
+  decrypted?.urlForQR ||
+  decrypted?.redirectUri;
+
+if (!redirect) {
+  return res.status(500).json({
+    error: "No redirect URL",
+    debug: decrypted
+  });
+}
+
+return res.json({
+  redirectUrl: redirect,
+  orderId: orderId
+});
 
     return res.json({
       redirectUrl: decrypted.redirectUrl,
