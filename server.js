@@ -107,6 +107,7 @@ app.post('/api/credo-order', async (req, res) => {
 
 app.post('/api/create-order-and-credo', async (req, res) => {
   try {
+    const products = Array.isArray(req.body.products) ? req.body.products : [];
     const amount = Number(req.body.amount);
 
     const shopifyResponse = await axios.post(
