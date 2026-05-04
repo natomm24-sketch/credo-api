@@ -378,38 +378,52 @@ app.post('/api/create-order-and-bank', async (req, res) => {
     });
   }
 });
+/* ===================== KEEPZ ===================== */
+
 app.post('/api/keepz-order', async (req, res) => {
   try {
     console.log("REQ BODY:", req.body);
 
-    const rawAmount = req.body.amount;
+    const products = Array.isArray(req.body.products) ? req.body.products : [];
 
-    if (!rawAmount || isNaN(rawAmount)) {
+    if (!products.length) {
+      return res.status(400).json({ error: "No products" });
+    }
+
+    // 🔒 თანხის დაცული გამოთვლა backend-ზე
+    const amount = Number(
+      products.reduce((sum, p) => {
+        return sum + ((Number(p.price) / 100) * (Number(p.amount) || 1));
+      }, 0).toFixed(2)
+    );
+
+    if (!amount || isNaN(amount)) {
       return res.status(400).json({ error: "Invalid amount" });
     }
 
-    // თანხის სწორი ფორმატირება
-    const amount = parseFloat(Number(rawAmount).toFixed(2));
     console.log("FINAL AMOUNT:", amount);
 
     const keepz = new Keepz(KEEPZ_PUBLIC_KEY, KEEPZ_PRIVATE_KEY);
-    const orderId = uuidv4(); // ცალკე ცვლადად გამოვიტანოთ შესანახად
+    const orderId = uuidv4();
 
-   const orderData = {
+    const orderData = {
       amount: amount,
       currency: "GEL",
       integratorId: KEEPZ_INTEGRATOR_ID,
       integratorOrderId: orderId,
-      receiverId: "d10d0e01-e70f-41eb-b7ba-8fd14e425f3f", // დავაბრუნეთ ძველი სახელი
-      receiverType: "BRANCH", // აუცილებლად დიდი ასოებით
+      receiverId: "d10d0e01-e70f-41eb-b7ba-8fd14e425f3f",
+      receiverType: "BRANCH",
       directLinkProvider: "DEFAULT",
       language: "KA",
-      successRedirectUri: "https://ezzy.ge",
-      failRedirectUri: "https://ezzy.ge",
+
+      // 🔥 redirect-ები დალაგებული
+      successRedirectUri: `https://ezzy.ge/payment-success?orderId=${orderId}`,
+      failRedirectUri: `https://ezzy.ge/payment-fail`,
+
+      // 🔥 KEEPZ callback
       callbackUri: "https://api.ezzy.ge/api/keepz-callback"
     };
 
-    // მონაცემების დაშიფვრა გაგზავნამდე
     const encrypted = keepz.encrypt(orderData);
 
     const response = await axios.post(
@@ -427,43 +441,39 @@ app.post('/api/keepz-order', async (req, res) => {
       }
     );
 
-    // ... response = await axios.post(...)
+    console.log("RAW KEEPZ RESPONSE:", response.data);
 
-    console.log("RAW KEEPZ RESPONSE FROM SERVER:", response.data);
+    let decrypted;
 
-    let decryptedResponse;
     try {
-      // ვშიფრავთ პასუხს
-      decryptedResponse = keepz.decrypt(response.data.encryptedData, response.data.encryptedKeys);
-      
-      // ❗ აი ეს ლოგი შეამოწმე ტერმინალში/კონსოლში
-      console.log("FULL DECRYPTED OBJECT:", decryptedResponse); 
+      decrypted = keepz.decrypt(
+        response.data.encryptedData,
+        response.data.encryptedKeys
+      );
 
-    } catch (decryptError) {
-      console.error("DECRYPTION FAILED:", decryptError);
-      return res.status(500).json({ error: "გაშიფვრის შეცდომა" });
+      console.log("DECRYPTED:", decrypted);
+
+    } catch (err) {
+      console.error("DECRYPT ERROR:", err);
+      return res.status(500).json({ error: "Decryption failed" });
     }
 
-    // ვამოწმებთ, მოვიდა თუ არა საერთოდ ლინკი
-    if (!decryptedResponse || !decryptedResponse.redirectUrl) {
-      console.error("REDIRECT URL IS MISSING IN DECRYPTED DATA");
-      return res.status(500).json({ 
-        error: "ლინკი არ მოვიდა", 
-        debug: decryptedResponse // დაუბრუნე ფრონტსაც სატესტოდ
+    if (!decrypted?.redirectUrl) {
+      return res.status(500).json({
+        error: "No redirect URL",
+        debug: decrypted
       });
     }
 
     return res.json({
-      redirectUrl: decryptedResponse.redirectUrl,
-      urlForQR: decryptedResponse.urlForQR,
+      redirectUrl: decrypted.redirectUrl,
       orderId: orderId
     });
 
   } catch (err) {
-    const errorMsg = err.response?.data || err.message;
-    console.error("KEEPZ API ERROR:", errorMsg);
+    console.error("KEEPZ ERROR:", err.response?.data || err.message);
     return res.status(500).json({
-      error: errorMsg
+      error: err.response?.data || err.message
     });
   }
 });
