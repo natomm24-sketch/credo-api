@@ -477,4 +477,20 @@ app.post('/api/keepz-order', async (req, res) => {
     });
   }
 });
+app.post('/api/keepz-callback', async (req, res) => {
+  try {
+    console.log("KEEPZ CALLBACK DATA:", req.body);
+
+    // აქ შეგიძლია:
+    // ✔ order წარმატებულია თუ არა შეამოწმო
+    // ✔ Shopify order შექმნა
+    // ✔ ბაზაში შენახვა
+
+    res.sendStatus(200);
+
+  } catch (err) {
+    console.error("CALLBACK ERROR:", err);
+    res.sendStatus(500);
+  }
+});
 app.listen(process.env.PORT || 3000);
