@@ -595,7 +595,7 @@ app.post('/api/keepz-success', async (req, res) => {
     order: {
 
       line_items: savedOrder.products.map(p => ({
-        variant_id: p.id,
+        variant_id: Number(p.id),
         quantity: p.amount
       })),
 
