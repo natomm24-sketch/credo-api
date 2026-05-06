@@ -605,7 +605,8 @@ app.post('/api/keepz-success', async (req, res) => {
 },
 
       financial_status: 'paid',
-
+note: `Name: ${savedOrder.customer.name}
+Phone: ${savedOrder.customer.phone}`,
       tags: 'KEEPZ'
 
     }
