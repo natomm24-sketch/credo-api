@@ -602,7 +602,7 @@ app.post('/api/keepz-success', async (req, res) => {
       billing_address: {
   first_name: savedOrder.customer.name,
   phone: savedOrder.customer.phone
-},,
+},
 
       financial_status: 'paid',
 
