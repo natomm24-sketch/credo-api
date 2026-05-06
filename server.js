@@ -599,10 +599,10 @@ app.post('/api/keepz-success', async (req, res) => {
         quantity: p.amount
       })),
 
-      customer: {
-        first_name: savedOrder.customer.name,
-        phone: savedOrder.customer.phone
-      },
+      billing_address: {
+  first_name: savedOrder.customer.name,
+  phone: savedOrder.customer.phone
+},,
 
       financial_status: 'paid',
 
