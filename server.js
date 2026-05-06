@@ -432,7 +432,7 @@ const amount = Number(total.toFixed(2));
       language: "KA",
 
       // 🔥 redirect-ები დალაგებული
-      successRedirectUri: `https://ezzy.ge/payment-success?orderId=${orderId}`,
+      successRedirectUri: `https://ezzy.ge/pages/payment-success?orderId=${orderId}`,
       failRedirectUri: `https://ezzy.ge/payment-fail`,
 
       // 🔥 KEEPZ callback
