@@ -586,7 +586,38 @@ app.post('/api/keepz-success', async (req, res) => {
     }
 
     console.log('SUCCESS ORDER:', savedOrder);
+   await axios.post(
 
+  `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json`,
+
+  {
+    order: {
+
+      line_items: savedOrder.products.map(p => ({
+        variant_id: p.id,
+        quantity: p.amount
+      })),
+
+      customer: {
+        first_name: savedOrder.customer.name,
+        phone: savedOrder.customer.phone
+      },
+
+      financial_status: 'paid',
+
+      tags: 'KEEPZ'
+
+    }
+  },
+
+  {
+    headers: {
+      'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+      'Content-Type': 'application/json'
+    }
+  }
+
+);
     return res.json({
       success: true
     });
