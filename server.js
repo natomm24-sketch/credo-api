@@ -558,4 +558,41 @@ app.post('/api/keepz-callback', async (req, res) => {
     res.sendStatus(500);
   }
 });
+app.post('/api/keepz-success', async (req, res) => {
+
+  try {
+
+    const { orderId } = req.body;
+
+    if (!orderId) {
+      return res.status(400).json({
+        error: 'Order ID required'
+      });
+    }
+
+    const savedOrder = pendingOrders[orderId];
+
+    if (!savedOrder) {
+      return res.status(404).json({
+        error: 'Order not found'
+      });
+    }
+
+    console.log('SUCCESS ORDER:', savedOrder);
+
+    return res.json({
+      success: true
+    });
+
+  } catch (e) {
+
+    console.log(e);
+
+    return res.status(500).json({
+      error: 'Server error'
+    });
+
+  }
+
+});
 app.listen(process.env.PORT || 3000);
