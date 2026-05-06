@@ -625,7 +625,10 @@ app.post('/api/keepz-success', async (req, res) => {
 
   } catch (e) {
 
-    console.log(e);
+    console.log(
+  'SHOPIFY ERROR:',
+  JSON.stringify(e.response?.data || e, null, 2)
+);
 
     return res.status(500).json({
       error: 'Server error'
