@@ -7,6 +7,7 @@ const Keepz = require('./keepz');
 const { v4: uuidv4 } = require('uuid');
 
 const app = express();
+const pendingOrders = {};
 
 app.use(cors({ origin: '*' }));
 app.use(express.json());
@@ -420,6 +421,11 @@ const amount = Number(total.toFixed(2));
 
     const keepz = new Keepz(KEEPZ_PUBLIC_KEY, KEEPZ_PRIVATE_KEY);
     const orderId = uuidv4();
+    pendingOrders[orderId] = {
+  customer: req.body.customer,
+  products: req.body.products,
+  createdAt: Date.now()
+};
 
     const orderData = {
       amount: amount,
