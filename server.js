@@ -638,5 +638,333 @@ Phone: ${savedOrder.customer.phone}`,
   }
 
 });
+/* ===================== KEEPZ (COMFORTMIX) ===================== */
 
+app.post('/api/keepz-order-comfortmix', async (req, res) => {
+
+  try {
+
+    console.log("REQ BODY:", req.body);
+
+    const products = Array.isArray(req.body.products)
+      ? req.body.products
+      : [];
+
+    if (!products.length) {
+
+      return res.status(400).json({
+        error: "No products"
+      });
+
+    }
+
+    // 🔒 უსაფრთხო თანხის გამოთვლა Shopify-დან
+    let total = 0;
+
+    for (const p of products) {
+
+      const shopifyRes = await axios.get(
+
+        `https://${SHOP_COMFORT}/admin/api/2024-01/variants/${p.id}.json`,
+
+        {
+          headers: {
+            'X-Shopify-Access-Token': ACCESS_TOKEN_COMFORT
+          }
+        }
+
+      );
+
+      const realPrice =
+        Number(shopifyRes.data.variant.price);
+
+      total +=
+        realPrice * (Number(p.amount) || 1);
+
+    }
+
+    const amount =
+      Number(total.toFixed(2));
+
+    if (!amount || isNaN(amount)) {
+
+      return res.status(400).json({
+        error: "Invalid amount"
+      });
+
+    }
+
+    console.log("FINAL AMOUNT:", amount);
+
+    const keepz = new Keepz(
+      KEEPZ_PUBLIC_KEY,
+      KEEPZ_PRIVATE_KEY
+    );
+
+    const orderId = uuidv4();
+
+    pendingOrders[orderId] = {
+
+      customer: req.body.customer,
+
+      products: req.body.products,
+
+      createdAt: Date.now(),
+
+      store: 'comfortmix'
+
+    };
+
+    const orderData = {
+
+      amount: amount,
+
+      currency: "GEL",
+
+      integratorId: KEEPZ_INTEGRATOR_ID,
+
+      integratorOrderId: orderId,
+
+      receiverId:
+        "d10d0e01-e70f-41eb-b7ba-8fd14e425f3f",
+
+      receiverType: "BRANCH",
+
+      directLinkProvider: "DEFAULT",
+
+      language: "KA",
+
+      successRedirectUri:
+`https://comfortmix.ge/pages/payment-success?orderId=${orderId}&amount=${amount}&productId=${req.body.products[0].id}`,
+
+      failRedirectUri:
+`https://comfortmix.ge/payment-fail`,
+
+      callbackUri:
+"https://api.ezzy.ge/api/keepz-callback-comfortmix"
+
+    };
+
+    const encrypted =
+      keepz.encrypt(orderData);
+
+    const response = await axios.post(
+
+      "https://gateway.keepz.me/ecommerce-service/api/integrator/order",
+
+      {
+        identifier: KEEPZ_INTEGRATOR_ID,
+
+        encryptedData:
+          encrypted.encryptedData,
+
+        encryptedKeys:
+          encrypted.encryptedKeys,
+
+        aes: true
+      },
+
+      {
+        headers: {
+          "Content-Type": "application/json"
+        }
+      }
+
+    );
+
+    console.log(
+      "RAW KEEPZ RESPONSE:",
+      response.data
+    );
+
+    let decrypted;
+
+    try {
+
+      decrypted = keepz.decrypt(
+
+        response.data.encryptedData,
+
+        response.data.encryptedKeys
+
+      );
+
+      console.log(
+        "DECRYPTED:",
+        decrypted
+      );
+
+    } catch (err) {
+
+      console.error(
+        "DECRYPT ERROR:",
+        err
+      );
+
+      return res.status(500).json({
+        error: "Decryption failed"
+      });
+
+    }
+
+    const redirect =
+
+      decrypted?.redirectUrl ||
+
+      decrypted?.paymentUrl ||
+
+      decrypted?.urlForQR ||
+
+      decrypted?.redirectUri;
+
+    if (!redirect) {
+
+      return res.status(500).json({
+
+        error: "No redirect URL",
+
+        debug: decrypted
+
+      });
+
+    }
+
+    return res.json({
+
+      redirectUrl: redirect,
+
+      orderId: orderId
+
+    });
+
+  } catch (err) {
+
+    console.error(
+
+      "KEEPZ ERROR:",
+
+      err.response?.data || err.message
+
+    );
+
+    return res.status(500).json({
+
+      error:
+        err.response?.data || err.message
+
+    });
+
+  }
+
+});
+
+
+/* ===================== KEEPZ SUCCESS (COMFORTMIX) ===================== */
+
+app.post('/api/keepz-success-comfortmix', async (req, res) => {
+
+  try {
+
+    const { orderId } = req.body;
+
+    if (!orderId) {
+
+      return res.status(400).json({
+        error: 'Order ID required'
+      });
+
+    }
+
+    const savedOrder =
+      pendingOrders[orderId];
+
+    if (!savedOrder) {
+
+      return res.status(404).json({
+        error: 'Order not found'
+      });
+
+    }
+
+    console.log(
+      'SUCCESS ORDER:',
+      savedOrder
+    );
+
+    await axios.post(
+
+      `https://${SHOP_COMFORT}/admin/api/2026-04/orders.json`,
+
+      {
+        order: {
+
+          line_items:
+            savedOrder.products.map(p => ({
+
+              variant_id: Number(p.id),
+
+              quantity: p.amount
+
+            })),
+
+          billing_address: {
+
+            first_name:
+              savedOrder.customer.name,
+
+            phone:
+              savedOrder.customer.phone
+
+          },
+
+          financial_status: 'paid',
+
+          note:
+`Name: ${savedOrder.customer.name}
+Phone: ${savedOrder.customer.phone}`,
+
+          tags: 'KEEPZ, COMFORTMIX'
+
+        }
+      },
+
+      {
+        headers: {
+
+          'X-Shopify-Access-Token':
+            ACCESS_TOKEN_COMFORT,
+
+          'Content-Type':
+            'application/json'
+
+        }
+      }
+
+    );
+
+    return res.json({
+      success: true
+    });
+
+  } catch (e) {
+
+    console.log(
+
+      'SHOPIFY ERROR:',
+
+      JSON.stringify(
+        e.response?.data || e,
+        null,
+        2
+      )
+
+    );
+
+    return res.status(500).json({
+      error: 'Server error'
+    });
+
+  }
+
+});
 app.listen(process.env.PORT || 3000);
