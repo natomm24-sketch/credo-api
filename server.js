@@ -916,7 +916,7 @@ billing_address: {
   first_name: savedOrder.customer.name,
   phone: savedOrder.customer.phone,
   country: "Georgia"
-},,
+},
 
           financial_status: 'paid',
 
