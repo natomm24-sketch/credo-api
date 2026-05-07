@@ -15,13 +15,13 @@ app.use(express.json());
 const MERCHANT_ID = process.env.MERCHANT_ID;
 const SECRET = process.env.SECRET;
 
-const SHOP = process.env.SHOP;
+const SHOP = "ezzy-ge.myshopify.com";
 const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
 
 const TBC_API_KEY = process.env.TBC_API_KEY;
 const TBC_API_SECRET = process.env.TBC_API_SECRET;
 
-const SHOPIFY_STORE = process.env.SHOPIFY_STORE;
+const SHOPIFY_STORE = 'ezzy-ge.myshopify.com';
 
 const SHOPIFY_CLIENT_ID = process.env.SHOPIFY_CLIENT_ID;
 const SHOPIFY_CLIENT_SECRET = process.env.SHOPIFY_CLIENT_SECRET;
@@ -274,7 +274,7 @@ res.json(response.data);
 });
 /* ===================== SHOPIFY + CREDO (COMFORTMIX) ===================== */
 
-const SHOP_COMFORT = process.env.SHOP_COMFORT;
+const SHOP_COMFORT = "comfortmix.myshopify.com";
 const ACCESS_TOKEN_COMFORT = process.env.ACCESS_TOKEN_COMFORT;
 
 app.post('/api/create-order-and-credo-comfortmix', async (req, res) => {
