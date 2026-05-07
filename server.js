@@ -907,15 +907,16 @@ app.post('/api/keepz-success-comfortmix', async (req, res) => {
 
             })),
 
-          billing_address: {
+          customer: {
+  first_name: savedOrder.customer.name,
+  phone: savedOrder.customer.phone
+},
 
-            first_name:
-              savedOrder.customer.name,
-
-            phone:
-              savedOrder.customer.phone
-
-          },
+billing_address: {
+  first_name: savedOrder.customer.name,
+  phone: savedOrder.customer.phone,
+  country: "Georgia"
+},,
 
           financial_status: 'paid',
 
