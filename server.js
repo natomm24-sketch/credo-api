@@ -17,7 +17,7 @@ const SECRET = "Vq6h3J0+fI";
 
 const SHOP = "ezzy-ge.myshopify.com";
 const ACCESS_TOKEN = "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";
-
+const ACCESS_TOKEN_COMFORT ="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";
 const TBC_API_KEY = "HH5Jiu9Ldzk6ka7m4NvPrSYW9Nk2ezEH";
 const TBC_API_SECRET = "XGlVzNoHWuthRLaO";
 
