@@ -201,20 +201,49 @@ app.post('/api/tbc-order', async (req, res) => {
       {
         merchantKey: "405757140-c326230e-e884-4565-be96-d41349469b31",
         campaignId: 529,
-        priceTotal: Number(
-  products.reduce((sum, p) => 
-    sum + ((Number(p.price) / 100) * (Number(p.amount) || 1)), 0)
+      priceTotal: Number(
+  products.reduce((sum, p) => {
+
+    const rawPrice = Number(p.price);
+
+    const finalPrice =
+      rawPrice > 10000
+        ? rawPrice / 100
+        : rawPrice;
+
+    return sum + (
+      finalPrice * (Number(p.amount) || 1)
+    );
+
+  }, 0)
 ),
-        currency: "GEL",
-        invoiceId: "INV_" + Date.now(),
-       products: products.map(p => ({
-  name: p.product_title 
-  ? `${p.product_title} - ${p.title}`
-  : (p.title || "Product"),
-  price: Number(p.price) / 100,
-  quantity: Number(p.amount) || 1
-}))
-      },
+
+currency: "GEL",
+
+invoiceId: "INV_" + Date.now(),
+
+products: products.map(p => {
+
+  const rawPrice = Number(p.price);
+
+  const finalPrice =
+    rawPrice > 10000
+      ? rawPrice / 100
+      : rawPrice;
+
+  return {
+
+    name: p.product_title
+      ? `${p.product_title} - ${p.title}`
+      : (p.title || "Product"),
+
+    price: finalPrice,
+
+    quantity: Number(p.amount) || 1
+
+  };
+
+})
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
