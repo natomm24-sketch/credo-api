@@ -319,6 +319,7 @@ app.post('/api/create-order-and-credo-comfortmix', async (req, res) => {
 Name: ${req.body.name}
 Phone: ${req.body.phone}
 Address: ${req.body.address}`,
+          tags: "CREDO",
           use_customer_default_address: false
         }
       },
@@ -1018,6 +1019,7 @@ app.post('/api/create-order-and-tbc-comfortmix', async (req, res) => {
 Name: ${req.body.name}
 Phone: ${req.body.phone}
 Address: ${req.body.address}`,
+          tags: "TBC",
           use_customer_default_address: false
         }
       },
