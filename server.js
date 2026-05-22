@@ -1089,7 +1089,7 @@ Name: ${req.body.name}
 Phone: ${req.body.phone}
 Address: ${req.body.address}`,
 
-          tags: "COD",
+          tags: "კურიერთან",
 
           use_customer_default_address: false
 
