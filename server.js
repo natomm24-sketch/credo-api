@@ -1215,4 +1215,177 @@ Address: ${req.body.address}`,
   }
 
 });
+/* ===================== SHOPIFY + CREDO (EZZY) ===================== */
+
+app.post('/api/create-order-and-credo-ezzy', async (req, res) => {
+
+  try {
+
+    const products = req.body.products || [];
+
+    // Shopify draft order
+    const shopifyResponse = await axios.post(
+
+      `https://${SHOP}/admin/api/2024-01/draft_orders.json`,
+
+      {
+        draft_order: {
+
+          line_items: products.map(p => ({
+            variant_id: Number(p.id),
+            quantity: p.amount || 1
+          })),
+
+          customer: {
+            first_name: req.body.name || "Customer"
+          },
+
+          shipping_address: {
+            first_name: req.body.name || "Customer",
+            address1: req.body.address || "",
+            phone: req.body.phone || "",
+            country: "Georgia"
+          },
+
+          note: `Credo Installment
+Name: ${req.body.name}
+Phone: ${req.body.phone}
+Address: ${req.body.address}`,
+
+          tags: "CREDO",
+
+          use_customer_default_address: false
+
+        }
+      },
+
+      {
+        headers: {
+          'X-Shopify-Access-Token': ACCESS_TOKEN,
+          'Content-Type': 'application/json'
+        }
+      }
+
+    );
+
+    // Credo redirect
+    const credoResponse = await axios.post(
+
+      'https://api.ezzy.ge/api/credo-order',
+
+      { products },
+
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+
+    );
+
+    return res.json({
+
+      draftOrderId:
+        shopifyResponse.data.draft_order.id,
+
+      redirectUrl:
+        credoResponse.data.redirectUrl
+
+    });
+
+  } catch (err) {
+
+    console.log(
+      "EZZY CREDO ERROR:",
+      err.response?.data || err.message
+    );
+
+    return res.status(500).json({
+
+      error:
+        err.response?.data || err.message
+
+    });
+
+  }
+
+});
+/* ===================== SHOPIFY + COD (EZZY) ===================== */
+
+app.post('/api/create-order-and-cod-ezzy', async (req, res) => {
+
+  try {
+
+    const products = req.body.products || [];
+
+    const shopifyResponse = await axios.post(
+
+      `https://${SHOP}/admin/api/2024-01/draft_orders.json`,
+
+      {
+        draft_order: {
+
+          line_items: products.map(p => ({
+            variant_id: Number(p.id),
+            quantity: p.amount || 1
+          })),
+
+          customer: {
+            first_name: req.body.name || "Customer"
+          },
+
+          shipping_address: {
+            first_name: req.body.name || "Customer",
+            address1: req.body.address || "",
+            phone: req.body.phone || "",
+            country: "Georgia"
+          },
+
+          note: `Cash On Delivery
+Name: ${req.body.name}
+Phone: ${req.body.phone}
+Address: ${req.body.address}`,
+
+          tags: "კურიერთან",
+
+          use_customer_default_address: false
+
+        }
+      },
+
+      {
+        headers: {
+          'X-Shopify-Access-Token': ACCESS_TOKEN,
+          'Content-Type': 'application/json'
+        }
+      }
+
+    );
+
+    return res.json({
+
+      success: true,
+
+      draftOrderId:
+        shopifyResponse.data.draft_order.id
+
+    });
+
+  } catch (err) {
+
+    console.log(
+      "EZZY COD ERROR:",
+      err.response?.data || err.message
+    );
+
+    return res.status(500).json({
+
+      error:
+        err.response?.data || err.message
+
+    });
+
+  }
+
+});
 app.listen(process.env.PORT || 3000);
