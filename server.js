@@ -1120,4 +1120,99 @@ Address: ${req.body.address}`,
   }
 
 });
+/* ===================== SHOPIFY + TBC (EZZY) ===================== */
+
+app.post('/api/create-order-and-tbc-ezzy', async (req, res) => {
+
+  try {
+
+    const products = req.body.products || [];
+
+    // Shopify draft order
+    const shopifyResponse = await axios.post(
+
+      `https://${SHOP}/admin/api/2024-01/draft_orders.json`,
+
+      {
+        draft_order: {
+
+          line_items: products.map(p => ({
+            variant_id: Number(p.id),
+            quantity: p.amount || 1
+          })),
+
+          customer: {
+            first_name: req.body.name || "Customer"
+          },
+
+          shipping_address: {
+            first_name: req.body.name || "Customer",
+            address1: req.body.address || "",
+            phone: req.body.phone || "",
+            country: "Georgia"
+          },
+
+          note: `TBC Installment
+Name: ${req.body.name}
+Phone: ${req.body.phone}
+Address: ${req.body.address}`,
+
+          tags: "TBC",
+
+          use_customer_default_address: false
+
+        }
+      },
+
+      {
+        headers: {
+          'X-Shopify-Access-Token': ACCESS_TOKEN,
+          'Content-Type': 'application/json'
+        }
+      }
+
+    );
+
+    // TBC redirect
+    const tbcResponse = await axios.post(
+
+      'https://api.ezzy.ge/api/tbc-order',
+
+      { products },
+
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+
+    );
+
+    return res.json({
+
+      draftOrderId:
+        shopifyResponse.data.draft_order.id,
+
+      redirectUrl:
+        tbcResponse.data.redirectUrl
+
+    });
+
+  } catch (err) {
+
+    console.log(
+      "EZZY TBC ERROR:",
+      err.response?.data || err.message
+    );
+
+    return res.status(500).json({
+
+      error:
+        err.response?.data || err.message
+
+    });
+
+  }
+
+});
 app.listen(process.env.PORT || 3000);
