@@ -138,6 +138,7 @@ app.post('/api/create-order-and-credo', async (req, res) => {
 Name: ${req.body.name}
 Phone: ${req.body.phone}
 Address: ${req.body.address}`,
+          tags: "CREDO",
           use_customer_default_address: false
         }
       },
