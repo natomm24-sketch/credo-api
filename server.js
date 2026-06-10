@@ -297,6 +297,7 @@ const ACCESS_TOKEN_COMFORT ="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";
 
 app.post('/api/create-order-and-credo-comfortmix', async (req, res) => {
   try {
+    console.log("BODY RECEIVED:", req.body);
     const products = req.body.products || [];
 
     const shopifyResponse = await axios.post(
