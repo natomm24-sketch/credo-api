@@ -8,7 +8,16 @@ const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const pendingOrders = {};
+const KEEPZ_INTEGRATOR_ID_EZZY =
+  "bc5a2ee3-b20f-4b94-af42-770e0276bc58";
 
+const KEEPZ_PUBLIC_KEY_EZZY = `
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEArjz9QG4JfIczP6dQ1TQvVmQDmJLOao0hW4B3MsirlCEmDh0SQWTHTTQxdwOpmhDgkSWXRkAqJJchY96eswnn0R82lFIW2GegBFwk34gbzOch/Bsm7SL1F3foZQVpy3QPspZAJZl2ov/2bi4xOVDytJI4SdRZfLLdFwwDmqg6Z2+mIvKOLHHxUP0vpBoEIkekgo5bHQFtWYIIw7Ws3ZF2i9lHVYfUcaoxrHS3Xe3cf5u/xDVIOYssRBJz7xyxdC6FUJFTxZdjoqyxetfNCuhUDbjcsIsDORmKMGNAIw8NA/mKKTSGD1i7lkU++MkYNI3Nis8E9D102TqwrRKQ7Xs6HEDfR5ycN0aa3vsGiTlnjig063VmNMCZqqilEWtVV/uZJ4rxy5SVfmZpiYwpJkuDdGkRYVZpwEzNFJOFwpo/tLwYgtNxb8+FUap9ff8oCxk6+pXnTvPCL7wtYvqQNekPtvgIpYXHG8rTyra5RpEe5Tv00tPYceD6u0633x1CZFLXLc766xU/TYAHwpIxU6Ajeu1hEUs2kow4nzDebm0IYDw2C2YViHO/bdpbnq9fqpNGDivdQsPQ59NJwgowxBwU6ORGbd8aqCO6ZOkTUiQs1DHvCMVT/KZdsj3UcXB5aeAoOEx+ycx+cHpXXyOR1RZqH7k0F/lk9L8BoI1rtN3NbikCAwEAAQ==
+`;
+
+const KEEPZ_PRIVATE_KEY_EZZY = `
+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
+`;
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
@@ -446,7 +455,10 @@ const amount = Number(total.toFixed(2));
 
     console.log("FINAL AMOUNT:", amount);
 
-    const keepz = new Keepz(KEEPZ_PUBLIC_KEY, KEEPZ_PRIVATE_KEY);
+    const keepz = new Keepz(
+  KEEPZ_PUBLIC_KEY_EZZY,
+  KEEPZ_PRIVATE_KEY_EZZY
+);
     const orderId = uuidv4();
     pendingOrders[orderId] = {
   customer: req.body.customer,
@@ -457,9 +469,9 @@ const amount = Number(total.toFixed(2));
     const orderData = {
       amount: amount,
       currency: "GEL",
-      integratorId: KEEPZ_INTEGRATOR_ID,
+     integratorId: KEEPZ_INTEGRATOR_ID_EZZY,
       integratorOrderId: orderId,
-      receiverId: "d10d0e01-e70f-41eb-b7ba-8fd14e425f3f",
+      receiverId: "a5c389e9-2823-4e8d-a8ef-193be7f3c5ab",
       receiverType: "BRANCH",
       directLinkProvider: "DEFAULT",
       language: "KA",
@@ -478,7 +490,7 @@ const amount = Number(total.toFixed(2));
     const response = await axios.post(
       "https://gateway.keepz.me/ecommerce-service/api/integrator/order",
       {
-        identifier: KEEPZ_INTEGRATOR_ID,
+        identifier: KEEPZ_INTEGRATOR_ID_EZZY,
         encryptedData: encrypted.encryptedData,
         encryptedKeys: encrypted.encryptedKeys,
         aes: true
