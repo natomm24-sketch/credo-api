@@ -373,7 +373,7 @@ app.post('/api/bog-order', async (req, res) => {
     const accessToken =
       tokenResponse.data.access_token;
 console.log("BOG TOKEN OK");
-console.log("ACCESS TOKEN:", accessToken);
+console.log("ACCESS TOKEN EXISTS:", !!accessToken);
     return res.json({
       success: true,
       accessTokenExists: !!accessToken
@@ -1713,6 +1713,25 @@ Address: ${req.body.address}`,
     });
 
   }
+
+});
+app.get('/api/test-bog', async (req, res) => {
+
+  const response = await axios.post(
+    'https://api.ezzy.ge/api/bog-order',
+    {
+      products: [
+        {
+          id: "1",
+          title: "Test",
+          price: 100,
+          amount: 1
+        }
+      ]
+    }
+  );
+
+  res.json(response.data);
 
 });
 app.listen(process.env.PORT || 3000);
