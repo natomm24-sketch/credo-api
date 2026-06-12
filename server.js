@@ -328,7 +328,102 @@ products: products.map(p => ({
     });
   }
 });
+/* ===================== SHOPIFY + BOG (EZZY) ===================== */
 
+app.post('/api/create-order-and-bog-ezzy', async (req, res) => {
+
+  try {
+
+    const products = req.body.products || [];
+
+    const shopifyResponse = await axios.post(
+
+      `https://${SHOP}/admin/api/2024-01/draft_orders.json`,
+
+      {
+        draft_order: {
+
+          line_items: products.map(p => ({
+            variant_id: Number(p.id),
+            quantity: p.amount || 1
+          })),
+
+          customer: {
+            first_name: req.body.name || "Customer"
+          },
+
+          shipping_address: {
+            first_name: req.body.name || "Customer",
+            address1: req.body.address || "",
+            phone: req.body.phone || "",
+            country: "Georgia"
+          },
+
+          note: `BOG Installment
+Name: ${req.body.name}
+Phone: ${req.body.phone}
+Address: ${req.body.address}`,
+
+          tags: "BOG",
+
+          use_customer_default_address: false
+
+        }
+      },
+
+      {
+        headers: {
+          'X-Shopify-Access-Token': ACCESS_TOKEN,
+          'Content-Type': 'application/json'
+        }
+      }
+
+    );
+
+    const bogResponse = await axios.post(
+
+      'https://api.ezzy.ge/api/bog-order',
+
+      { products },
+
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+
+    );
+
+    return res.json({
+
+      draftOrderId:
+        shopifyResponse.data.draft_order.id,
+
+      redirectUrl:
+        bogResponse.data.redirectUrl,
+
+      orderId:
+        bogResponse.data.orderId
+
+    });
+
+  } catch (err) {
+
+    console.log(
+      "BOG EZZY ERROR:",
+      err.response?.data || err.message
+    );
+
+    return res.status(500).json({
+
+      error:
+        err.response?.data || err.message
+
+    });
+
+  }
+
+});
 /* ===================== BOG ORDER EZZY ===================== */
 
 app.post('/api/bog-order', async (req, res) => {
@@ -465,10 +560,14 @@ console.log(
   "BOG CHECKOUT:",
   checkoutResponse.data
 );
-    return res.json({
-      success: true,
-      accessTokenExists: !!accessToken
-    });
+    const redirectLink = checkoutResponse.data.links.find(
+  l => l.rel === "target"
+);
+
+return res.json({
+  redirectUrl: redirectLink?.href,
+  orderId: checkoutResponse.data.order_id
+});
 
   } catch (err) {
 
