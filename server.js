@@ -10,6 +10,15 @@ const app = express();
 const pendingOrders = {};
 const KEEPZ_INTEGRATOR_ID_EZZY =
   "bc5a2ee3-b20f-4b94-af42-770e0276bc58";
+/* ===================== CREDO ===================== */
+
+// EZZY (ახალი შპს)
+const MERCHANT_ID_EZZY = "20504";
+const SECRET_EZZY = "secret!@#";
+
+// COMFORTMIX (ძველი შპს)
+const MERCHANT_ID_COMFORT = "21118";
+const SECRET_COMFORT = "Vq6h3J0+fI";
 
 const KEEPZ_PUBLIC_KEY_EZZY = `
 MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEArjz9QG4JfIczP6dQ1TQvVmQDmJLOao0hW4B3MsirlCEmDh0SQWTHTTQxdwOpmhDgkSWXRkAqJJchY96eswnn0R82lFIW2GegBFwk34gbzOch/Bsm7SL1F3foZQVpy3QPspZAJZl2ov/2bi4xOVDytJI4SdRZfLLdFwwDmqg6Z2+mIvKOLHHxUP0vpBoEIkekgo5bHQFtWYIIw7Ws3ZF2i9lHVYfUcaoxrHS3Xe3cf5u/xDVIOYssRBJz7xyxdC6FUJFTxZdjoqyxetfNCuhUDbjcsIsDORmKMGNAIw8NA/mKKTSGD1i7lkU++MkYNI3Nis8E9D102TqwrRKQ7Xs6HEDfR5ycN0aa3vsGiTlnjig063VmNMCZqqilEWtVV/uZJ4rxy5SVfmZpiYwpJkuDdGkRYVZpwEzNFJOFwpo/tLwYgtNxb8+FUap9ff8oCxk6+pXnTvPCL7wtYvqQNekPtvgIpYXHG8rTyra5RpEe5Tv00tPYceD6u0633x1CZFLXLc766xU/TYAHwpIxU6Ajeu1hEUs2kow4nzDebm0IYDw2C2YViHO/bdpbnq9fqpNGDivdQsPQ59NJwgowxBwU6ORGbd8aqCO6ZOkTUiQs1DHvCMVT/KZdsj3UcXB5aeAoOEx+ycx+cHpXXyOR1RZqH7k0F/lk9L8BoI1rtN3NbikCAwEAAQ==
@@ -21,8 +30,6 @@ MIIJQQIBADANBgkqhkiG9w0BAQEFAASCCSswggknAgEAAoICAQCkdhJob4UQuoVTBPCjMYFrsxv9O+18
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-const MERCHANT_ID = "21118";
-const SECRET = "Vq6h3J0+fI";
 
 const SHOP = "ezzy-ge.myshopify.com";
 const ACCESS_TOKEN = "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";
@@ -63,15 +70,22 @@ app.post('/api/credo-order', async (req, res) => {
     formattedProducts.forEach(p => {
       stringToHash += p.id + p.title + p.amount + p.price + "0";
     });
-    stringToHash += SECRET;
+    stringToHash += SECRET_EZZY;
 
     const check = crypto
       .createHash('md5')
       .update(stringToHash)
       .digest('hex');
+console.log("CREDO MERCHANT:", MERCHANT_ID_EZZY);
 
+console.log("CREDO REQUEST:", {
+  merchantId: MERCHANT_ID_EZZY,
+  orderCode,
+  products: formattedProducts
+});
+    
     const data = {
-      merchantId: MERCHANT_ID,
+      merchantId: MERCHANT_ID_EZZY,
       orderCode: orderCode,
       check: check,
       installmentLength: 12
@@ -162,7 +176,7 @@ Address: ${req.body.address}`,
     const draftOrder = shopifyResponse.data.draft_order;
 
     const credoResponse = await axios.post(
-      'https://api.ezzy.ge/api/credo-order',
+  'https://api.ezzy.ge/api/credo-order',
       { products },
       { headers: { 'Content-Type': 'application/json' } }
     );
@@ -345,7 +359,7 @@ Address: ${req.body.address}`,
     const draftOrder = shopifyResponse.data.draft_order;
 
     const credoResponse = await axios.post(
-      'https://api.ezzy.ge/api/credo-order',
+  'https://api.ezzy.ge/api/credo-order-comfortmix',
       { products },
       { headers: { 'Content-Type': 'application/json' } }
     );
@@ -359,6 +373,102 @@ Address: ${req.body.address}`,
     return res.status(500).json({
       error: err.response?.data || err.message
     });
+  }
+});
+app.post('/api/credo-order-comfortmix', async (req, res) => {
+  try {
+
+    const products = Array.isArray(req.body.products)
+      ? req.body.products
+      : [];
+
+    const orderCode = 'ORD_' + Date.now();
+
+    const formattedProducts = products.map(p => ({
+      id: String(p.id),
+      title: String(p.title).replace(/[^\x00-\x7F]/g, '').trim() || "Product",
+      amount: Number(p.amount || 1),
+      price: Number(p.price),
+      type: 0
+    }));
+
+    let stringToHash = '';
+
+    formattedProducts.forEach(p => {
+      stringToHash +=
+        p.id +
+        p.title +
+        p.amount +
+        p.price +
+        "0";
+    });
+
+    stringToHash += SECRET_COMFORT;
+
+    const check = crypto
+      .createHash('md5')
+      .update(stringToHash)
+      .digest('hex');
+    console.log("CREDO MERCHANT:", MERCHANT_ID_COMFORT);
+
+console.log("CREDO REQUEST:", {
+  merchantId: MERCHANT_ID_COMFORT,
+  orderCode,
+  products: formattedProducts
+});
+
+
+    const data = {
+      merchantId: MERCHANT_ID_COMFORT,
+      orderCode,
+      check,
+      installmentLength: 12
+    };
+
+    formattedProducts.forEach((p, i) => {
+      data[`products[${i}][id]`] = p.id;
+      data[`products[${i}][title]`] = p.title;
+      data[`products[${i}][amount]`] = p.amount;
+      data[`products[${i}][price]`] = p.price;
+      data[`products[${i}][type]`] = 0;
+    });
+
+    const response = await axios.post(
+      'https://ganvadeba.credo.ge/widget_api/index.php',
+      qs.stringify(data),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        maxRedirects: 0,
+        validateStatus: () => true
+      }
+    );
+
+    const redirectUrl =
+      response.headers.location ||
+      (response.headers.refresh &&
+      response.headers.refresh.includes('url=')
+        ? response.headers.refresh.split('url=')[1]
+        : null) ||
+      response.data?.URL ||
+      response.data?.data?.URL;
+
+    if (redirectUrl) {
+      return res.json({ redirectUrl });
+    }
+
+    return res.status(400).json({
+      error: 'No redirect URL',
+      bankResponse: response.data
+    });
+
+  } catch (err) {
+
+    return res.status(500).json({
+      error: err.response?.data || err.message
+    });
+
   }
 });
 /* ===================== SHOPIFY + BANK (UNIFIED) ===================== */
@@ -1283,8 +1393,7 @@ Address: ${req.body.address}`,
 
     // Credo redirect
     const credoResponse = await axios.post(
-
-      'https://api.ezzy.ge/api/credo-order',
+  'https://api.ezzy.ge/api/credo-order',
 
       { products },
 
