@@ -1905,16 +1905,19 @@ Address: ${req.body.address}`,
   }
 
 });
-app.get('/api/test-bog', async (req, res) => {
+app.get('/api/test-bog-final', async (req, res) => {
 
   const response = await axios.post(
-    'https://api.ezzy.ge/api/bog-order',
+    'https://api.ezzy.ge/api/create-order-and-bog-ezzy',
     {
+      name: "Test User",
+      phone: "557000459",
+      address: "Tbilisi",
       products: [
         {
-          id: "1",
-          title: "Test",
-          price: 100,
+          id: "54492320235825",
+          title: "Test Product",
+          price: 269,
           amount: 1
         }
       ]
