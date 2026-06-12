@@ -372,8 +372,99 @@ app.post('/api/bog-order', async (req, res) => {
 
     const accessToken =
       tokenResponse.data.access_token;
+    const amount = Number(
+  products.reduce((sum, p) => {
+
+    const rawPrice = Number(p.price);
+
+    return sum + (
+      (rawPrice > 10000 ? rawPrice / 100 : rawPrice)
+      * (Number(p.amount) || 1)
+    );
+
+  }, 0)
+);
+
+const cartItems = products.map(p => ({
+
+  total_item_amount:
+    (Number(p.price) > 10000
+      ? Number(p.price) / 100
+      : Number(p.price))
+    * (Number(p.amount) || 1),
+
+  item_description:
+    p.product_title
+      ? `${p.product_title} - ${p.title}`
+      : (p.title || "Product"),
+
+  total_item_qty:
+    Number(p.amount) || 1,
+
+  item_vendor_code:
+    String(p.id),
+
+  product_image_url:
+    "https://ezzy.ge",
+
+  item_site_detail_url:
+    "https://ezzy.ge"
+
+}));
 console.log("BOG TOKEN OK");
 console.log("ACCESS TOKEN EXISTS:", !!accessToken);
+    const checkoutResponse = await axios.post(
+
+  'https://installment.bog.ge/v1/installment/checkout',
+
+  {
+    intent: "LOAN",
+
+    installment_month: 12,
+
+    installment_type: "STANDARD",
+
+    shop_order_id: "BOG_" + Date.now(),
+
+    success_redirect_url:
+      "https://ezzy.ge/pages/payment-success",
+
+    fail_redirect_url:
+      "https://ezzy.ge/payment-fail",
+
+    reject_redirect_url:
+      "https://ezzy.ge/payment-fail",
+
+    validate_items: true,
+
+    locale: "ka",
+
+    purchase_units: [
+      {
+        amount: {
+          currency_code: "GEL",
+          value: amount
+        }
+      }
+    ],
+
+    cart_items: cartItems
+
+  },
+
+  {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    }
+  }
+
+);
+
+console.log(
+  "BOG CHECKOUT:",
+  checkoutResponse.data
+);
     return res.json({
       success: true,
       accessTokenExists: !!accessToken
