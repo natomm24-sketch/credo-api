@@ -20,6 +20,35 @@ const SECRET_EZZY = "secret!@#";
 const MERCHANT_ID_COMFORT = "21118";
 const SECRET_COMFORT = "Vq6h3J0+fI";
 
+/* ===================== TBC EZZY ===================== */
+
+const TBC_API_KEY_EZZY =
+"t8HeSIPjlWbAPhhUcKiqXw3PO2HmXwSE";
+
+const TBC_API_SECRET_EZZY =
+"1uSdWMKbLu5bqcGs";
+
+const TBC_MERCHANT_KEY_EZZY =
+"404665563-54822600-e8fb-47cc-9eda-76e36501c0b6";
+
+const TBC_CAMPAIGN_ID_EZZY =
+529;
+
+
+/* ===================== TBC COMFORTMIX ===================== */
+
+const TBC_API_KEY_COMFORT =
+"HH5Jiu9Ldzk6ka7m4NvPrSYW9Nk2ezEH";
+
+const TBC_API_SECRET_COMFORT =
+"XGlVzNoHWuthRLaO";
+
+const TBC_MERCHANT_COMFORT =
+"405757140-c326230e-e884-4565-be96-d41349469b31";
+
+const TBC_CAMPAIGN_COMFORT =
+529;
+
 const KEEPZ_PUBLIC_KEY_EZZY = `
 MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEArjz9QG4JfIczP6dQ1TQvVmQDmJLOao0hW4B3MsirlCEmDh0SQWTHTTQxdwOpmhDgkSWXRkAqJJchY96eswnn0R82lFIW2GegBFwk34gbzOch/Bsm7SL1F3foZQVpy3QPspZAJZl2ov/2bi4xOVDytJI4SdRZfLLdFwwDmqg6Z2+mIvKOLHHxUP0vpBoEIkekgo5bHQFtWYIIw7Ws3ZF2i9lHVYfUcaoxrHS3Xe3cf5u/xDVIOYssRBJz7xyxdC6FUJFTxZdjoqyxetfNCuhUDbjcsIsDORmKMGNAIw8NA/mKKTSGD1i7lkU++MkYNI3Nis8E9D102TqwrRKQ7Xs6HEDfR5ycN0aa3vsGiTlnjig063VmNMCZqqilEWtVV/uZJ4rxy5SVfmZpiYwpJkuDdGkRYVZpwEzNFJOFwpo/tLwYgtNxb8+FUap9ff8oCxk6+pXnTvPCL7wtYvqQNekPtvgIpYXHG8rTyra5RpEe5Tv00tPYceD6u0633x1CZFLXLc766xU/TYAHwpIxU6Ajeu1hEUs2kow4nzDebm0IYDw2C2YViHO/bdpbnq9fqpNGDivdQsPQ59NJwgowxBwU6ORGbd8aqCO6ZOkTUiQs1DHvCMVT/KZdsj3UcXB5aeAoOEx+ycx+cHpXXyOR1RZqH7k0F/lk9L8BoI1rtN3NbikCAwEAAQ==
 `;
@@ -34,8 +63,6 @@ app.use(express.json());
 const SHOP = "ezzy-ge.myshopify.com";
 const ACCESS_TOKEN = "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";
 
-const TBC_API_KEY = "HH5Jiu9Ldzk6ka7m4NvPrSYW9Nk2ezEH";
-const TBC_API_SECRET = "XGlVzNoHWuthRLaO";
 
 const SHOPIFY_STORE = 'ezzy-ge.myshopify.com';
 
@@ -212,7 +239,9 @@ app.post('/api/tbc-order', async (req, res) => {
       {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'Authorization': 'Basic ' + Buffer.from(TBC_API_KEY + ':' + TBC_API_SECRET).toString('base64')
+          'Authorization': 'Basic ' + Buffer.from(
+  TBC_API_KEY_EZZY + ':' + TBC_API_SECRET_EZZY
+).toString('base64')
         }
       }
     );
@@ -223,8 +252,109 @@ app.post('/api/tbc-order', async (req, res) => {
     const tbcResponse = await axios.post(
       'https://api.tbcbank.ge/v1/online-installments/applications',
       {
-        merchantKey: "405757140-c326230e-e884-4565-be96-d41349469b31",
-        campaignId: 529,
+        merchantKey: TBC_MERCHANT_KEY_EZZY,
+campaignId: TBC_CAMPAIGN_ID_EZZY,
+     priceTotal: Number(
+  products.reduce((sum, p) => {
+
+    const rawPrice = Number(p.price);
+
+    return sum + (
+      (rawPrice > 10000 ? rawPrice / 100 : rawPrice)
+      * (Number(p.amount) || 1)
+    );
+
+  }, 0)
+),
+
+currency: "GEL",
+
+invoiceId: "INV_" + Date.now(),
+
+products: products.map(p => ({
+  
+  name: p.product_title
+    ? `${p.product_title} - ${p.title}`
+    : (p.title || "Product"),
+
+  price:
+    Number(p.price) > 10000
+      ? Number(p.price) / 100
+      : Number(p.price),
+
+  quantity: Number(p.amount) || 1
+
+}))
+  },
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        maxRedirects: 0,
+        validateStatus: () => true
+      }
+    );
+
+    console.log("STATUS:", tbcResponse.status);
+    console.log("HEADERS:", tbcResponse.headers);
+    console.log("DATA:", tbcResponse.data);
+
+    const redirectUrl = tbcResponse.headers.location;
+
+    if (!redirectUrl) {
+      return res.status(400).json({
+        error: "No redirect URL",
+        status: tbcResponse.status,
+        headers: tbcResponse.headers,
+        data: tbcResponse.data
+      });
+    }
+
+    return res.json({ redirectUrl });
+
+  } catch (err) {
+    console.log("TBC ERROR:", err.response?.data || err.message);
+    return res.status(500).json({
+      error: err.response?.data || err.message
+    });
+  }
+});
+/* ===================== TBC COMFORTMIX ===================== */
+
+app.post('/api/tbc-order-comfortmix', async (req, res) => {
+  try {
+     console.log("FULL BODY:", req.body);
+    console.log("PRODUCTS FROM FRONT:", req.body.products);
+    
+    const products = Array.isArray(req.body.products) ? req.body.products : [];
+
+    if (products.length === 0) {
+      return res.status(400).json({ error: "No products" });
+    }
+
+    /* TOKEN */
+    const tokenResponse = await axios.post(
+      'https://api.tbcbank.ge/oauth/token',
+      qs.stringify({ grant_type: 'client_credentials' }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': 'Basic ' + Buffer.from(
+  TBC_API_KEY_COMFORT + ':' + TBC_API_SECRET_COMFORT
+).toString('base64')
+        }
+      }
+    );
+
+    const accessToken = tokenResponse.data.access_token;
+
+    /* INSTALLMENT */
+    const tbcResponse = await axios.post(
+      'https://api.tbcbank.ge/v1/online-installments/applications',
+      {
+        merchantKey: TBC_MERCHANT_COMFORT,
+campaignId: TBC_CAMPAIGN_COMFORT,
      priceTotal: Number(
   products.reduce((sum, p) => {
 
@@ -1157,7 +1287,7 @@ Address: ${req.body.address}`,
 
     // 2. TBC redirect
     const tbcResponse = await axios.post(
-      'https://api.ezzy.ge/api/tbc-order',
+      'https://api.ezzy.ge/api/tbc-order-comfortmix',
       { products },
       {
         headers: {
