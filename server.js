@@ -78,6 +78,14 @@ app.get("/", (req, res) => {
   res.status(200).send("OK");
 });
 
+/* ===================== BOG EZZY ===================== */
+
+const BOG_CLIENT_ID_EZZY =
+"10001646";
+
+const BOG_CLIENT_SECRET_EZZY =
+"ocoUoCrhHpbk";
+
 /* ===================== CREDO ===================== */
 
 app.post('/api/credo-order', async (req, res) => {
@@ -320,6 +328,73 @@ products: products.map(p => ({
     });
   }
 });
+
+/* ===================== BOG ORDER EZZY ===================== */
+
+app.post('/api/bog-order', async (req, res) => {
+
+  try {
+
+    const products = Array.isArray(req.body.products)
+      ? req.body.products
+      : [];
+
+    if (!products.length) {
+      return res.status(400).json({
+        error: "No products"
+      });
+    }
+
+    /* TOKEN */
+
+    const tokenResponse = await axios.post(
+
+      'https://oauth2.bog.ge/auth/realms/bog/protocol/openid-connect/token',
+
+      qs.stringify({
+        grant_type: 'client_credentials'
+      }),
+
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization':
+            'Basic ' +
+            Buffer.from(
+              BOG_CLIENT_ID_EZZY +
+              ':' +
+              BOG_CLIENT_SECRET_EZZY
+            ).toString('base64')
+        }
+      }
+
+    );
+
+    const accessToken =
+      tokenResponse.data.access_token;
+console.log("BOG TOKEN OK");
+console.log("ACCESS TOKEN:", accessToken);
+    return res.json({
+      success: true,
+      accessTokenExists: !!accessToken
+    });
+
+  } catch (err) {
+
+    console.log(
+      "BOG ERROR:",
+      err.response?.data || err.message
+    );
+
+    return res.status(500).json({
+      error:
+        err.response?.data || err.message
+    });
+
+  }
+
+});
+
 /* ===================== TBC COMFORTMIX ===================== */
 
 app.post('/api/tbc-order-comfortmix', async (req, res) => {
