@@ -762,8 +762,6 @@ app.post('/api/bog-part-order', async (req, res) => {
 app.post('/api/create-order-and-bog-part-ezzy', async (req, res) => {
 
 try {
-
-```
 const products = req.body.products || [];
 
 const shopifyResponse = await axios.post(
@@ -790,13 +788,11 @@ const shopifyResponse = await axios.post(
       },
 
       note: `BOG PART BY PART
-```
 
 Name: ${req.body.name}
 Phone: ${req.body.phone}
 Address: ${req.body.address}`,
 
-```
       tags: "BOG-BNPL",
 
       use_customer_default_address: false
@@ -843,11 +839,9 @@ return res.json({
     bogResponse.data.orderId
 
 });
-```
 
 } catch (err) {
 
-```
 console.log(
   "BOG BNPL EZZY ERROR:",
   err.response?.data || err.message
@@ -859,7 +853,6 @@ return res.status(500).json({
     err.response?.data || err.message
 
 });
-```
 
 }
 
