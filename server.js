@@ -584,6 +584,287 @@ return res.json({
   }
 
 });
+/* ===================== BOG PART BY PART ===================== */
+
+app.post('/api/bog-part-order', async (req, res) => {
+
+  try {
+
+    const products = Array.isArray(req.body.products)
+      ? req.body.products
+      : [];
+
+    const month =
+      Number(req.body.month) || 4;
+
+    const discountCode =
+      req.body.discount_code || "ZERO";
+
+    if (!products.length) {
+      return res.status(400).json({
+        error: "No products"
+      });
+    }
+
+    const tokenResponse = await axios.post(
+
+      'https://oauth2.bog.ge/auth/realms/bog/protocol/openid-connect/token',
+
+      qs.stringify({
+        grant_type: 'client_credentials'
+      }),
+
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization':
+            'Basic ' +
+            Buffer.from(
+              BOG_CLIENT_ID_EZZY +
+              ':' +
+              BOG_CLIENT_SECRET_EZZY
+            ).toString('base64')
+        }
+      }
+
+    );
+
+    const accessToken =
+      tokenResponse.data.access_token;
+
+    const amount = Number(
+      products.reduce((sum, p) => {
+
+        const rawPrice = Number(p.price);
+
+        return sum + (
+          (rawPrice > 10000 ? rawPrice / 100 : rawPrice)
+          * (Number(p.amount) || 1)
+        );
+
+      }, 0)
+    );
+
+    const cartItems = products.map(p => ({
+
+      total_item_amount:
+        (Number(p.price) > 10000
+          ? Number(p.price) / 100
+          : Number(p.price))
+        * (Number(p.amount) || 1),
+
+      item_description:
+        p.product_title
+          ? `${p.product_title} - ${p.title}`
+          : (p.title || "Product"),
+
+      total_item_qty:
+        Number(p.amount) || 1,
+
+      item_vendor_code:
+        String(p.id),
+
+      product_image_url:
+        "https://ezzy.ge",
+
+      item_site_detail_url:
+        "https://ezzy.ge"
+
+    }));
+
+    const checkoutResponse = await axios.post(
+
+      'https://installment.bog.ge/v1/installment/checkout',
+
+      {
+        intent: "LOAN",
+
+        installment_month: month,
+
+        installment_type: "STANDARD",
+
+        discount_code: discountCode,
+
+        shop_order_id:
+          "BNPL_" + Date.now(),
+
+        success_redirect_url:
+          "https://ezzy.ge/pages/payment-success",
+
+        fail_redirect_url:
+          "https://ezzy.ge/payment-fail",
+
+        reject_redirect_url:
+          "https://ezzy.ge/payment-fail",
+
+        validate_items: true,
+
+        locale: "ka",
+
+        purchase_units: [
+          {
+            amount: {
+              currency_code: "GEL",
+              value: amount
+            }
+          }
+        ],
+
+        cart_items: cartItems
+
+      },
+
+      {
+        headers: {
+          Authorization:
+            `Bearer ${accessToken}`,
+          'Content-Type':
+            'application/json'
+        }
+      }
+
+    );
+
+    const redirectLink =
+      checkoutResponse.data.links.find(
+        l => l.rel === "target"
+      );
+
+    return res.json({
+
+      redirectUrl:
+        redirectLink?.href,
+
+      orderId:
+        checkoutResponse.data.order_id
+
+    });
+
+  } catch (err) {
+
+    console.log(
+      "BOG BNPL ERROR:",
+      err.response?.data || err.message
+    );
+
+    return res.status(500).json({
+
+      error:
+        err.response?.data || err.message
+
+    });
+
+  }
+
+});
+
+/* ===================== BOG PART BY PART Draft Order ===================== */
+app.post('/api/create-order-and-bog-part-ezzy', async (req, res) => {
+
+try {
+
+```
+const products = req.body.products || [];
+
+const shopifyResponse = await axios.post(
+
+  `https://${SHOP}/admin/api/2024-01/draft_orders.json`,
+
+  {
+    draft_order: {
+
+      line_items: products.map(p => ({
+        variant_id: Number(p.id),
+        quantity: p.amount || 1
+      })),
+
+      customer: {
+        first_name: req.body.name || "Customer"
+      },
+
+      shipping_address: {
+        first_name: req.body.name || "Customer",
+        address1: req.body.address || "",
+        phone: req.body.phone || "",
+        country: "Georgia"
+      },
+
+      note: `BOG PART BY PART
+```
+
+Name: ${req.body.name}
+Phone: ${req.body.phone}
+Address: ${req.body.address}`,
+
+```
+      tags: "BOG-BNPL",
+
+      use_customer_default_address: false
+
+    }
+  },
+
+  {
+    headers: {
+      'X-Shopify-Access-Token': ACCESS_TOKEN,
+      'Content-Type': 'application/json'
+    }
+  }
+
+);
+
+const bogResponse = await axios.post(
+
+  'https://api.ezzy.ge/api/bog-part-order',
+
+  {
+    products,
+    month: req.body.month,
+    discount_code: req.body.discount_code
+  },
+
+  {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  }
+
+);
+
+return res.json({
+
+  draftOrderId:
+    shopifyResponse.data.draft_order.id,
+
+  redirectUrl:
+    bogResponse.data.redirectUrl,
+
+  orderId:
+    bogResponse.data.orderId
+
+});
+```
+
+} catch (err) {
+
+```
+console.log(
+  "BOG BNPL EZZY ERROR:",
+  err.response?.data || err.message
+);
+
+return res.status(500).json({
+
+  error:
+    err.response?.data || err.message
+
+});
+```
+
+}
+
+});
+
 
 /* ===================== TBC COMFORTMIX ===================== */
 
