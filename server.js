@@ -2149,37 +2149,102 @@ Address: ${req.body.address}`,
 
 });
 /* ===================== SHOPIFY + TBC (EZZY CART) ===================== */
+
 app.post('/api/create-order-and-tbc-cart-ezzy', async (req, res) => {
+
   try {
 
-    const response = await axios.post(
+    const products = req.body.products || [];
+
+    // Shopify Draft Order
+    const shopifyResponse = await axios.post(
+
+      `https://${SHOP}/admin/api/2024-01/draft_orders.json`,
+
+      {
+        draft_order: {
+
+          line_items: products.map(p => ({
+            variant_id: Number(p.id),
+            quantity: Number(p.amount) || 1
+          })),
+
+          customer: {
+            first_name: req.body.name || "Customer"
+          },
+
+          shipping_address: {
+            first_name: req.body.name || "Customer",
+            address1: req.body.address || "",
+            phone: req.body.phone || "",
+            country: "Georgia"
+          },
+
+          note: `TBC CART
+Name: ${req.body.name}
+Phone: ${req.body.phone}
+Address: ${req.body.address}`,
+
+          tags: "TBC,CART",
+
+          use_customer_default_address: false
+
+        }
+      },
+
+      {
+        headers: {
+          'X-Shopify-Access-Token': ACCESS_TOKEN,
+          'Content-Type': 'application/json'
+        }
+      }
+
+    );
+
+    // TBC CART
+    const tbcResponse = await axios.post(
+
       'https://api.ezzy.ge/api/tbc-order-cart',
-      req.body,
+
+      { products },
+
       {
         headers: {
           'Content-Type': 'application/json'
         }
       }
+
     );
 
-    return res.json(response.data);
+    return res.json({
+
+      draftOrderId:
+        shopifyResponse.data.draft_order.id,
+
+      sessionId:
+        tbcResponse.data.sessionId,
+
+      redirectUrl:
+        tbcResponse.data.redirectUrl
+
+    });
 
   } catch (err) {
 
-    console.error(
-      'TBC CART ERROR:',
+    console.log(
+      "EZZY TBC CART ERROR:",
       err.response?.data || err.message
     );
 
-    return res.status(
-      err.response?.status || 500
-    ).json(
-      err.response?.data || {
-        error: err.message
-      }
-    );
+    return res.status(500).json({
+
+      error:
+        err.response?.data || err.message
+
+    });
 
   }
+
 });
 /* ===================== SHOPIFY + CREDO (EZZY) ===================== */
 
