@@ -368,14 +368,18 @@ app.post('/api/tbc-order-cart', async (req, res) => {
       tokenResponse.data.access_token;
 
     const priceTotal = products.reduce(
-      (sum, p) =>
-        sum +
-        (
-          Number(p.price) *
-          (Number(p.amount) || 1)
-        ),
-      0
+  (sum, p) => {
+
+    const rawPrice = Number(p.price);
+
+    return sum + (
+      (rawPrice > 10000 ? rawPrice / 100 : rawPrice)
+      * (Number(p.amount) || 1)
     );
+
+  },
+  0
+);
 
     const tbcResponse = await axios.post(
       'https://api.tbcbank.ge/v1/online-installments/applications',
@@ -397,7 +401,10 @@ app.post('/api/tbc-order-cart', async (req, res) => {
             p.title ||
             "Product",
 
-          price: Number(p.price),
+         price:
+  Number(p.price) > 10000
+    ? Number(p.price) / 100
+    : Number(p.price),
 
           quantity:
             Number(p.amount) || 1
