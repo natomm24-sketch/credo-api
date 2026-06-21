@@ -328,6 +328,140 @@ products: products.map(p => ({
     });
   }
 });
+/* ===================== TBC CART EZZY ===================== */
+
+app.post('/api/tbc-order-cart', async (req, res) => {
+  try {
+
+    console.log("CART PRODUCTS:", req.body.products);
+
+    const products = Array.isArray(req.body.products)
+      ? req.body.products
+      : [];
+
+    if (!products.length) {
+      return res.status(400).json({
+        error: "No products"
+      });
+    }
+
+    const tokenResponse = await axios.post(
+      'https://api.tbcbank.ge/oauth/token',
+      qs.stringify({
+        grant_type: 'client_credentials'
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization':
+            'Basic ' +
+            Buffer.from(
+              TBC_API_KEY_EZZY +
+              ':' +
+              TBC_API_SECRET_EZZY
+            ).toString('base64')
+        }
+      }
+    );
+
+    const accessToken =
+      tokenResponse.data.access_token;
+
+    const priceTotal = products.reduce(
+      (sum, p) =>
+        sum +
+        (
+          Number(p.price) *
+          (Number(p.amount) || 1)
+        ),
+      0
+    );
+
+    const tbcResponse = await axios.post(
+      'https://api.tbcbank.ge/v1/online-installments/applications',
+      {
+        merchantKey: TBC_MERCHANT_KEY_EZZY,
+        campaignId: TBC_CAMPAIGN_ID_EZZY,
+
+        priceTotal,
+
+        currency: "GEL",
+
+        invoiceId:
+          "CART_" + Date.now(),
+
+        products: products.map(p => ({
+
+          name:
+            p.product_title ||
+            p.title ||
+            "Product",
+
+          price: Number(p.price),
+
+          quantity:
+            Number(p.amount) || 1
+
+        }))
+      },
+      {
+        headers: {
+          Authorization:
+            `Bearer ${accessToken}`,
+          'Content-Type':
+            'application/json'
+        },
+        maxRedirects: 0,
+        validateStatus: () => true
+      }
+    );
+
+    console.log(
+      "CART STATUS:",
+      tbcResponse.status
+    );
+
+    console.log(
+      "CART DATA:",
+      tbcResponse.data
+    );
+
+    const redirectUrl =
+      tbcResponse.headers.location;
+
+    if (!redirectUrl) {
+
+      return res.status(400).json({
+
+        error: "No redirect URL",
+
+        bankResponse:
+          tbcResponse.data
+
+      });
+
+    }
+
+    return res.json({
+      redirectUrl
+    });
+
+  } catch (err) {
+
+    console.log(
+      "TBC CART ERROR:",
+      err.response?.data || err.message
+    );
+
+    return res.status(500).json({
+
+      error:
+        err.response?.data || err.message
+
+    });
+
+  }
+});
 /* ===================== SHOPIFY + BOG (EZZY) ===================== */
 
 app.post('/api/create-order-and-bog-ezzy', async (req, res) => {
