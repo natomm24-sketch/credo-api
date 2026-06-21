@@ -2141,6 +2141,39 @@ Address: ${req.body.address}`,
   }
 
 });
+/* ===================== SHOPIFY + TBC (EZZY CART) ===================== */
+app.post('/api/create-order-and-tbc-cart-ezzy', async (req, res) => {
+  try {
+
+    const response = await axios.post(
+      'https://api.ezzy.ge/api/tbc-order-cart',
+      req.body,
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    return res.json(response.data);
+
+  } catch (err) {
+
+    console.error(
+      'TBC CART ERROR:',
+      err.response?.data || err.message
+    );
+
+    return res.status(
+      err.response?.status || 500
+    ).json(
+      err.response?.data || {
+        error: err.message
+      }
+    );
+
+  }
+});
 /* ===================== SHOPIFY + CREDO (EZZY) ===================== */
 
 app.post('/api/create-order-and-credo-ezzy', async (req, res) => {
