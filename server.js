@@ -469,6 +469,85 @@ app.post('/api/tbc-order-cart', async (req, res) => {
 
   }
 });
+/* ===================== SHOPIFY + COD (EZZY) ===================== */
+
+app.post('/api/create-order-and-cod-ezzy', async (req, res) => {
+
+  try {
+
+    const products = req.body.products || [];
+
+    const shopifyResponse = await axios.post(
+
+      `https://${SHOP}/admin/api/2024-01/draft_orders.json`,
+
+      {
+        draft_order: {
+
+          line_items: products.map(p => ({
+            variant_id: Number(p.id),
+            quantity: Number(p.amount) || 1
+          })),
+
+          customer: {
+            first_name: req.body.name || "Customer"
+          },
+
+          shipping_address: {
+            first_name: req.body.name || "Customer",
+            address1: req.body.address || "",
+            phone: req.body.phone || "",
+            country: "Georgia"
+          },
+
+          note: `კურიერთან გადახდა
+
+სახელი: ${req.body.name}
+ტელეფონი: ${req.body.phone}
+მისამართი: ${req.body.address}`,
+
+          tags: "COD",
+
+          use_customer_default_address: false
+
+        }
+      },
+
+      {
+        headers: {
+          'X-Shopify-Access-Token': ACCESS_TOKEN,
+          'Content-Type': 'application/json'
+        }
+      }
+
+    );
+
+    return res.json({
+
+      success: true,
+
+      draftOrderId:
+        shopifyResponse.data.draft_order.id
+
+    });
+
+  } catch (err) {
+
+    console.log(
+      "COD ERROR:",
+      err.response?.data || err.message
+    );
+
+    return res.status(500).json({
+
+      error:
+        err.response?.data || err.message
+
+    });
+
+  }
+
+});
 /* ===================== SHOPIFY + BOG (EZZY) ===================== */
 
 app.post('/api/create-order-and-bog-ezzy', async (req, res) => {
