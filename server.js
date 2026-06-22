@@ -1458,23 +1458,30 @@ const draftOrderResponse = await axios.post(
   `https://${SHOP}/admin/api/2024-01/draft_orders.json`,
   {
     draft_order: {
-      line_items: products.map(p => ({
-        variant_id: Number(p.id),
-        quantity: Number(p.amount) || 1
-      })),
-      
-      customer: {
-    first_name: req.body.customer?.name || '',
-    phone: req.body.customer?.phone || ''
+  line_items: products.map(p => ({
+    variant_id: Number(p.id),
+    quantity: Number(p.amount) || 1
+  })),
+
+  customer: {
+    first_name: req.body.customer?.name || "Customer"
   },
-      note: `KEEPZ
+
+  shipping_address: {
+    first_name: req.body.customer?.name || "Customer",
+    phone: req.body.customer?.phone || "",
+    country: "Georgia"
+  },
+
+  note: `KEEPZ
 
 Name: ${req.body.customer?.name || ''}
-Phone: ${req.body.customer?.phone || ''}
-Address: ${req.body.customer?.address || ''}`,
-      tags: "KEEPZ"
-    }
-  },
+Phone: ${req.body.customer?.phone || ''}`,
+
+  tags: "KEEPZ",
+
+  use_customer_default_address: false
+},
   {
     headers: {
       'X-Shopify-Access-Token': ACCESS_TOKEN,
