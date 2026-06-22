@@ -1453,15 +1453,45 @@ const amount = Number(total.toFixed(2));
     }
 
     console.log("FINAL AMOUNT:", amount);
+    
+const draftOrderResponse = await axios.post(
+  `https://${SHOP}/admin/api/2024-01/draft_orders.json`,
+  {
+    draft_order: {
+      line_items: products.map(p => ({
+        variant_id: Number(p.id),
+        quantity: Number(p.amount) || 1
+      })),
+      note: `KEEPZ
 
+Name: ${req.body.customer?.name || ''}
+Phone: ${req.body.customer?.phone || ''}
+Address: ${req.body.customer?.address || ''}`,
+      tags: "KEEPZ"
+    }
+  },
+  {
+    headers: {
+      'X-Shopify-Access-Token': ACCESS_TOKEN,
+      'Content-Type': 'application/json'
+    }
+  }
+);
+
+console.log(
+  "KEEPZ DRAFT CREATED:",
+  draftOrderResponse.data.draft_order.id
+);
     const keepz = new Keepz(
   KEEPZ_PUBLIC_KEY_EZZY,
   KEEPZ_PRIVATE_KEY_EZZY
 );
-    const orderId = uuidv4();
-    pendingOrders[orderId] = {
+  const orderId = uuidv4();
+
+pendingOrders[orderId] = {
   customer: req.body.customer,
   products: req.body.products,
+  draftOrderId: draftOrderResponse.data.draft_order.id,
   createdAt: Date.now()
 };
 
