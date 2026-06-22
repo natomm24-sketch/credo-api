@@ -1462,6 +1462,11 @@ const draftOrderResponse = await axios.post(
         variant_id: Number(p.id),
         quantity: Number(p.amount) || 1
       })),
+      
+      customer: {
+    first_name: req.body.customer?.name || '',
+    phone: req.body.customer?.phone || ''
+  },
       note: `KEEPZ
 
 Name: ${req.body.customer?.name || ''}
