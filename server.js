@@ -1480,8 +1480,9 @@ Phone: ${req.body.customer?.phone || ''}`,
 
   tags: "KEEPZ",
 
-  use_customer_default_address: false
-},
+   use_customer_default_address: false
+    }
+  },
   {
     headers: {
       'X-Shopify-Access-Token': ACCESS_TOKEN,
