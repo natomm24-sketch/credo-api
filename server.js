@@ -1607,7 +1607,20 @@ app.post('/api/keepz-callback', async (req, res) => {
     );
 
     console.log("DECRYPTED CALLBACK:", callback);
+const { status, integratorOrderId } = callback;
 
+if (status !== "SUCCESS") {
+  return res.sendStatus(200);
+}
+
+const savedOrder = pendingOrders[integratorOrderId];
+
+if (!savedOrder) {
+  console.log("ORDER NOT FOUND:", integratorOrderId);
+  return res.sendStatus(404);
+}
+
+console.log("FOUND ORDER:", savedOrder);
     return res.sendStatus(200);
 
   } catch (err) {
@@ -1671,10 +1684,10 @@ Phone: ${savedOrder.customer.phone}`,
   },
 
   {
-    headers: {
-      'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
-      'Content-Type': 'application/json'
-    }
+   headers: {
+  'X-Shopify-Access-Token': ACCESS_TOKEN,
+  'Content-Type': 'application/json'
+}
   }
 
 );
