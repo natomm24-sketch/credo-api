@@ -1453,12 +1453,6 @@ const amount = Number(total.toFixed(2));
     }
 
     console.log("FINAL AMOUNT:", amount);
-    const keepz = new Keepz(
-  KEEPZ_PUBLIC_KEY_EZZY,
-  KEEPZ_PRIVATE_KEY_EZZY
-);
-
-const orderId = uuidv4();
     
 const draftOrderResponse = await axios.post(
   `https://${SHOP}/admin/api/2024-01/draft_orders.json`,
@@ -1481,10 +1475,7 @@ const draftOrderResponse = await axios.post(
 
   note: `KEEPZ
 
-OrderId: ${orderId}
-
 Name: ${req.body.customer?.name || ''}
-
 Phone: ${req.body.customer?.phone || ''}`,
 
   tags: "KEEPZ",
@@ -1504,6 +1495,11 @@ console.log(
   "KEEPZ DRAFT CREATED:",
   draftOrderResponse.data.draft_order.id
 );
+    const keepz = new Keepz(
+  KEEPZ_PUBLIC_KEY_EZZY,
+  KEEPZ_PRIVATE_KEY_EZZY
+);
+  const orderId = uuidv4();
 
 pendingOrders[orderId] = {
   customer: req.body.customer,
@@ -1597,68 +1593,52 @@ return res.json({
 });
 app.post('/api/keepz-callback', async (req, res) => {
   try {
+    console.log("KEEPZ CALLBACK:", req.body);
 
-    console.log("KEEPZ CALLBACK RAW:", req.body);
+    const { status, integratorOrderId } = req.body;
 
-    const keepz = new Keepz(
-      KEEPZ_PUBLIC_KEY_EZZY,
-      KEEPZ_PRIVATE_KEY_EZZY
+    // მხოლოდ წარმატებული გადახდა
+    if (status !== "SUCCESS") {
+      return res.sendStatus(200);
+    }
+
+    // ⚠️ აქ უნდა გქონდეს შენახული products (შემდეგ ეტაპზე დავამატებთ)
+    const products = req.body.products || [];
+
+    if (!products.length) {
+      console.log("No products in callback");
+      return res.sendStatus(200);
+    }
+
+    // Shopify order შექმნა
+    const shopifyResponse = await axios.post(
+      `https://${SHOP}/admin/api/2024-01/orders.json`,
+      {
+        order: {
+          line_items: products.map(p => ({
+            variant_id: Number(p.id),
+            quantity: p.amount || 1
+          })),
+          financial_status: "paid",
+          note: `Keepz Order ID: ${integratorOrderId}`
+        }
+      },
+      {
+        headers: {
+          'X-Shopify-Access-Token': ACCESS_TOKEN,
+          'Content-Type': 'application/json'
+        }
+      }
     );
 
-    const callback = keepz.decrypt(
-      req.body.encryptedData,
-      req.body.encryptedKeys
-    );
+    console.log("SHOPIFY ORDER CREATED:", shopifyResponse.data.order.id);
 
-    console.log("DECRYPTED CALLBACK:", callback);
-const { status, integratorOrderId } = callback;
+    res.sendStatus(200);
 
-if (status !== "SUCCESS") {
-  return res.sendStatus(200);
-}
-
-const drafts = await axios.get(
-  `https://${SHOP}/admin/api/2024-01/draft_orders.json?status=open`,
-  {
-    headers: {
-      "X-Shopify-Access-Token": ACCESS_TOKEN
-    }
+  } catch (err) {
+    console.error("CALLBACK ERROR:", err.response?.data || err.message);
+    res.sendStatus(500);
   }
-);
-
-const draft = drafts.data.draft_orders.find(d =>
-  d.note && d.note.includes(`OrderId: ${integratorOrderId}`)
-);
-
-if (!draft) {
-  console.log("DRAFT NOT FOUND:", integratorOrderId);
-  return res.sendStatus(404);
-}
-
-console.log("FOUND DRAFT:", draft.id);
-
-await axios.put(
-  `https://${SHOP}/admin/api/2024-01/draft_orders/${draft.id}/complete.json`,
-  {},
-  {
-    headers: {
-      "X-Shopify-Access-Token": ACCESS_TOKEN,
-      "Content-Type": "application/json"
-    }
-  }
-);
-
-console.log("DRAFT COMPLETED:", draft.id);
-
-return res.sendStatus(200);
-
-} catch (err) {
-
-  console.error("CALLBACK ERROR:", err.response?.data || err.message);
-
-  return res.sendStatus(500);
-
-}
 });
 app.post('/api/keepz-success', async (req, res) => {
 
@@ -1713,10 +1693,10 @@ Phone: ${savedOrder.customer.phone}`,
   },
 
   {
-   headers: {
-  'X-Shopify-Access-Token': ACCESS_TOKEN,
-  'Content-Type': 'application/json'
-}
+    headers: {
+      'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+      'Content-Type': 'application/json'
+    }
   }
 
 );
