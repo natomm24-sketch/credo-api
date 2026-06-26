@@ -1453,6 +1453,12 @@ const amount = Number(total.toFixed(2));
     }
 
     console.log("FINAL AMOUNT:", amount);
+    const keepz = new Keepz(
+  KEEPZ_PUBLIC_KEY_EZZY,
+  KEEPZ_PRIVATE_KEY_EZZY
+);
+
+const orderId = uuidv4();
     
 const draftOrderResponse = await axios.post(
   `https://${SHOP}/admin/api/2024-01/draft_orders.json`,
@@ -1475,7 +1481,10 @@ const draftOrderResponse = await axios.post(
 
   note: `KEEPZ
 
+OrderId: ${orderId}
+
 Name: ${req.body.customer?.name || ''}
+
 Phone: ${req.body.customer?.phone || ''}`,
 
   tags: "KEEPZ",
@@ -1495,11 +1504,6 @@ console.log(
   "KEEPZ DRAFT CREATED:",
   draftOrderResponse.data.draft_order.id
 );
-    const keepz = new Keepz(
-  KEEPZ_PUBLIC_KEY_EZZY,
-  KEEPZ_PRIVATE_KEY_EZZY
-);
-  const orderId = uuidv4();
 
 pendingOrders[orderId] = {
   customer: req.body.customer,
@@ -1613,17 +1617,28 @@ if (status !== "SUCCESS") {
   return res.sendStatus(200);
 }
 
-const savedOrder = pendingOrders[integratorOrderId];
+const drafts = await axios.get(
+  `https://${SHOP}/admin/api/2024-01/draft_orders.json?status=open`,
+  {
+    headers: {
+      "X-Shopify-Access-Token": ACCESS_TOKEN
+    }
+  }
+);
 
-if (!savedOrder) {
-  console.log("ORDER NOT FOUND:", integratorOrderId);
+const draft = drafts.data.draft_orders.find(d =>
+  d.note && d.note.includes(`OrderId: ${integratorOrderId}`)
+);
+
+if (!draft) {
+  console.log("DRAFT NOT FOUND:", integratorOrderId);
   return res.sendStatus(404);
 }
 
-console.log("FOUND ORDER:", savedOrder);
+console.log("FOUND DRAFT:", draft.id);
 
 await axios.put(
-  `https://${SHOP}/admin/api/2026-04/draft_orders/${savedOrder.draftOrderId}/complete.json`,
+  `https://${SHOP}/admin/api/2024-01/draft_orders/${draft.id}/complete.json`,
   {},
   {
     headers: {
@@ -1633,7 +1648,7 @@ await axios.put(
   }
 );
 
-console.log("DRAFT COMPLETED:", savedOrder.draftOrderId);
+console.log("DRAFT COMPLETED:", draft.id);
 
 return res.sendStatus(200);
 
