@@ -1624,7 +1624,18 @@ console.log("FOUND ORDER:", savedOrder);
     return res.sendStatus(200);
 
   } catch (err) {
+await axios.put(
+  `https://${SHOP}/admin/api/2026-04/draft_orders/${savedOrder.draftOrderId}/complete.json`,
+  {},
+  {
+    headers: {
+      "X-Shopify-Access-Token": ACCESS_TOKEN,
+      "Content-Type": "application/json"
+    }
+  }
+);
 
+console.log("DRAFT COMPLETED:", savedOrder.draftOrderId);
     console.error("CALLBACK ERROR:", err);
 
     return res.sendStatus(500);
