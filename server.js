@@ -1593,51 +1593,29 @@ return res.json({
 });
 app.post('/api/keepz-callback', async (req, res) => {
   try {
-    console.log("KEEPZ CALLBACK:", req.body);
 
-    const { status, integratorOrderId } = req.body;
+    console.log("KEEPZ CALLBACK RAW:", req.body);
 
-    // მხოლოდ წარმატებული გადახდა
-    if (status !== "SUCCESS") {
-      return res.sendStatus(200);
-    }
-
-    // ⚠️ აქ უნდა გქონდეს შენახული products (შემდეგ ეტაპზე დავამატებთ)
-    const products = req.body.products || [];
-
-    if (!products.length) {
-      console.log("No products in callback");
-      return res.sendStatus(200);
-    }
-
-    // Shopify order შექმნა
-    const shopifyResponse = await axios.post(
-      `https://${SHOP}/admin/api/2024-01/orders.json`,
-      {
-        order: {
-          line_items: products.map(p => ({
-            variant_id: Number(p.id),
-            quantity: p.amount || 1
-          })),
-          financial_status: "paid",
-          note: `Keepz Order ID: ${integratorOrderId}`
-        }
-      },
-      {
-        headers: {
-          'X-Shopify-Access-Token': ACCESS_TOKEN,
-          'Content-Type': 'application/json'
-        }
-      }
+    const keepz = new Keepz(
+      KEEPZ_PUBLIC_KEY_EZZY,
+      KEEPZ_PRIVATE_KEY_EZZY
     );
 
-    console.log("SHOPIFY ORDER CREATED:", shopifyResponse.data.order.id);
+    const callback = keepz.decrypt(
+      req.body.encryptedData,
+      req.body.encryptedKeys
+    );
 
-    res.sendStatus(200);
+    console.log("DECRYPTED CALLBACK:", callback);
+
+    return res.sendStatus(200);
 
   } catch (err) {
-    console.error("CALLBACK ERROR:", err.response?.data || err.message);
-    res.sendStatus(500);
+
+    console.error("CALLBACK ERROR:", err);
+
+    return res.sendStatus(500);
+
   }
 });
 app.post('/api/keepz-success', async (req, res) => {
