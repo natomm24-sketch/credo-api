@@ -1621,9 +1621,7 @@ if (!savedOrder) {
 }
 
 console.log("FOUND ORDER:", savedOrder);
-    return res.sendStatus(200);
 
-  } catch (err) {
 await axios.put(
   `https://${SHOP}/admin/api/2026-04/draft_orders/${savedOrder.draftOrderId}/complete.json`,
   {},
@@ -1636,11 +1634,16 @@ await axios.put(
 );
 
 console.log("DRAFT COMPLETED:", savedOrder.draftOrderId);
-    console.error("CALLBACK ERROR:", err);
 
-    return res.sendStatus(500);
+return res.sendStatus(200);
 
-  }
+} catch (err) {
+
+  console.error("CALLBACK ERROR:", err.response?.data || err.message);
+
+  return res.sendStatus(500);
+
+}
 });
 app.post('/api/keepz-success', async (req, res) => {
 
