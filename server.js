@@ -1694,7 +1694,7 @@ Phone: ${savedOrder.customer.phone}`,
 
   {
     headers: {
-      'X-Shopify-Access-Token': SHOPIFY_ACCESS_TOKEN,
+      'X-Shopify-Access-Token': ACCESS_TOKEN,
       'Content-Type': 'application/json'
     }
   }
