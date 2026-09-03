@@ -2542,3 +2542,5 @@ Address: ${req.body.address}`,
 });
 
 app.listen(process.env.PORT || 3000);
+
+require('./tracker')(app);
