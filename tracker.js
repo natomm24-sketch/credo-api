@@ -217,7 +217,6 @@ module.exports = function registerOrderTracker(app) {
             customer { displayName firstName lastName email phone }
             shippingAddress { name firstName lastName phone city address1 }
             lineItems(first: 50) { nodes { id name quantity variantTitle } }
-            fulfillmentOrders(first: 20) { nodes { id status requestStatus assignedLocation { name } } }
             fulfillments { id status displayStatus trackingInfo(first: 10) { company number url } }
           }
         }
@@ -250,9 +249,7 @@ module.exports = function registerOrderTracker(app) {
           quantity: item.quantity,
           variant: item.variantTitle || null,
         })),
-        fulfillmentOrders: (order.fulfillmentOrders?.nodes || [])
-          .filter((item) => !['CLOSED', 'CANCELLED'].includes(item.status))
-          .map((item) => ({ id: item.id, status: item.status, requestStatus: item.requestStatus, location: item.assignedLocation?.name || '' })),
+        fulfillmentOrders: [],
         fulfillments: (order.fulfillments || []).map((fulfillment) => ({
           id: fulfillment.id,
           status: fulfillment.status,
