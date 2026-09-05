@@ -273,7 +273,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             name: item.name,
             quantity: item.quantity,
             variant: item.variantTitle || null,
-            image: item.image ? { url: item.image.url, alt: item.image.altText || item.name } : null,
+            
           })),
           tracking: (order.fulfillments || []).flatMap((fulfillment) =>
             (fulfillment.trackingInfo || []).map((info) => ({
@@ -303,7 +303,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
               name: item.name,
               quantity: item.quantity,
               variant: item.variantTitle || null,
-              image: item.image ? { url: item.image.url, alt: item.image.altText || item.name } : null,
+              
             })),
             tracking: [],
           };
@@ -380,7 +380,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
           name: item.name,
           quantity: item.quantity,
            variant: item.variantTitle || null,
-           image: item.image ? { url: item.image.url, alt: item.image.altText || item.name } : null,
+           
         })),
         fulfillmentOrders: [],
         fulfillments: (order.fulfillments || []).map((fulfillment) => ({
@@ -427,7 +427,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
               name: item.name,
               quantity: item.quantity,
                variant: item.variantTitle || null,
-               image: item.image ? { url: item.image.url, alt: item.image.altText || item.name } : null,
+               
             })),
             fulfillmentOrders: [],
             fulfillments: [],
