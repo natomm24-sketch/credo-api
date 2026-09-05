@@ -220,36 +220,61 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             customer { firstName lastName phone }
             shippingAddress { firstName lastName phone }
             billingAddress { firstName lastName phone }
-            lineItems(first: 20) { nodes { name quantity variantTitle } }
+            lineItems(first: 20) { nodes { name quantity variantTitle image { url altText } } }
             fulfillments { status trackingInfo(first: 10) { company number url } }
+          }
+        }
+      }
+    `;
+    const draftQuery = `
+      query TrackDraftOrders($search: String!) {
+        draftOrders(first: 50, query: $search, sortKey: UPDATED_AT, reverse: true) {
+          nodes {
+            name createdAt status tags note2
+            totalPriceSet { shopMoney { amount currencyCode } }
+            customer { firstName lastName phone }
+            shippingAddress { firstName lastName phone }
+            lineItems(first: 20) { nodes { name quantity variantTitle image { url altText } } }
           }
         }
       }
     `;
 
     try {
-      const data = await graphql(query, { search });
+      const [data, draftData] = await Promise.all([
+        graphql(query, { search }),
+        graphql(draftQuery, { search }).catch((draftError) => {
+          console.error('DRAFT TRACKER ERROR:', draftError.response?.status || draftError.message);
+          return { draftOrders: { nodes: [] } };
+        }),
+      ]);
       const expectedFullName = `${firstName} ${lastName}`;
+      const matchesCustomer = (record) => {
+        const contacts = [record.customer, record.shippingAddress, record.billingAddress].filter(Boolean);
+        const phoneMatches = contacts.some((contact) => normalizePhone(contact.phone) === phone);
+        const nameMatches = contacts.some((contact) => {
+          const contactFirst = normalizeName(contact.firstName);
+          const contactLast = normalizeName(contact.lastName);
+          const contactFull = normalizeName(`${contactFirst} ${contactLast}`);
+          return (contactFirst === firstName && contactLast === lastName) || contactFirst === expectedFullName || contactFull === expectedFullName;
+        });
+        return phoneMatches && nameMatches;
+      };
       const orders = (data.orders?.nodes || [])
-        .filter((order) => {
-          const contacts = [order.customer, order.shippingAddress, order.billingAddress].filter(Boolean);
-          const phoneMatches = contacts.some((contact) => normalizePhone(contact.phone) === phone);
-          const nameMatches = contacts.some((contact) => {
-            const contactFirst = normalizeName(contact.firstName);
-            const contactLast = normalizeName(contact.lastName);
-            const contactFull = normalizeName(`${contactFirst} ${contactLast}`);
-            return (contactFirst === firstName && contactLast === lastName) || contactFirst === expectedFullName || contactFull === expectedFullName;
-          });
-          return phoneMatches && nameMatches;
-        })
-        .slice(0, 10)
+        .filter(matchesCustomer)
         .map((order) => ({
+          kind: 'order',
           number: order.name,
           createdAt: order.createdAt,
           financialStatus: order.displayFinancialStatus,
           fulfillmentStatus: order.displayFulfillmentStatus,
           total: order.totalPriceSet?.shopMoney || null,
-          items: (order.lineItems?.nodes || []).map((item) => ({ name: item.name, quantity: item.quantity, variant: item.variantTitle || null })),
+          items: (order.lineItems?.nodes || []).map((item) => ({
+            name: item.name,
+            quantity: item.quantity,
+            variant: item.variantTitle || null,
+            image: item.image ? { url: item.image.url, alt: item.image.altText || item.name } : null,
+          })),
           tracking: (order.fulfillments || []).flatMap((fulfillment) =>
             (fulfillment.trackingInfo || []).map((info) => ({
               status: fulfillment.status,
@@ -259,8 +284,32 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             })),
           ),
         }));
+      const drafts = (draftData.draftOrders?.nodes || [])
+        .filter(matchesCustomer)
+        .map((draft) => {
+          const provider = detectProvider(draft.tags, draft.note2);
+          const applicationMeta = extractApplicationMeta(draft.tags, draft.note2, provider, '');
+          return {
+            kind: 'draft',
+            number: draft.name,
+            createdAt: draft.createdAt,
+            financialStatus: 'PENDING',
+            fulfillmentStatus: 'DRAFT',
+            draftStatus: draft.status,
+            provider,
+            applicationStatus: applicationMeta.applicationStatus || 'განაცხადი შექმნილია',
+            total: draft.totalPriceSet?.shopMoney || null,
+            items: (draft.lineItems?.nodes || []).map((item) => ({
+              name: item.name,
+              quantity: item.quantity,
+              variant: item.variantTitle || null,
+              image: item.image ? { url: item.image.url, alt: item.image.altText || item.name } : null,
+            })),
+            tracking: [],
+          };
+        });
 
-      return res.json({ orders });
+      return res.json({ orders: [...orders, ...drafts].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 10) });
     } catch (error) {
       console.error('ORDER TRACKER ERROR:', error.response?.status || error.message);
       return res.status(503).json({ error: 'შეკვეთების მოძებნა დროებით ვერ მოხერხდა. გთხოვთ, მოგვიანებით სცადოთ.' });
@@ -279,7 +328,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             totalPriceSet { shopMoney { amount currencyCode } }
             customer { displayName firstName lastName email phone }
             shippingAddress { name firstName lastName phone city address1 }
-            lineItems(first: 50) { nodes { id name quantity variantTitle } }
+            lineItems(first: 50) { nodes { id name quantity variantTitle image { url altText } } }
             fulfillments { id status displayStatus trackingInfo(first: 10) { company number url } }
           }
         }
@@ -294,7 +343,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             totalPriceSet { shopMoney { amount currencyCode } }
             customer { displayName firstName lastName email phone }
             shippingAddress { name firstName lastName phone city address1 }
-            lineItems(first: 50) { nodes { id name quantity variantTitle } }
+            lineItems(first: 50) { nodes { id name quantity variantTitle image { url altText } } }
           }
         }
       }
@@ -330,7 +379,8 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
           id: item.id,
           name: item.name,
           quantity: item.quantity,
-          variant: item.variantTitle || null,
+           variant: item.variantTitle || null,
+           image: item.image ? { url: item.image.url, alt: item.image.altText || item.name } : null,
         })),
         fulfillmentOrders: [],
         fulfillments: (order.fulfillments || []).map((fulfillment) => ({
@@ -376,7 +426,8 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
               id: item.id,
               name: item.name,
               quantity: item.quantity,
-              variant: item.variantTitle || null,
+               variant: item.variantTitle || null,
+               image: item.image ? { url: item.image.url, alt: item.image.altText || item.name } : null,
             })),
             fulfillmentOrders: [],
             fulfillments: [],
