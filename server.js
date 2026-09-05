@@ -153,7 +153,7 @@ console.log("CREDO REQUEST:", {
       (response.data && response.data.data && response.data.data.URL);
 
     if (redirectUrl) {
-      return res.json({ redirectUrl });
+      return res.json({ redirectUrl, orderCode });
     }
 
     return res.status(400).json({
@@ -319,7 +319,7 @@ products: products.map(p => ({
       });
     }
 
-    return res.json({ redirectUrl });
+    return res.json({ redirectUrl, sessionId: tbcResponse.data?.sessionId || null });
 
   } catch (err) {
     console.log("TBC ERROR:", err.response?.data || err.message);
@@ -450,7 +450,8 @@ app.post('/api/tbc-order-cart', async (req, res) => {
     }
 
     return res.json({
-      redirectUrl
+      redirectUrl,
+      sessionId: tbcResponse.data?.sessionId || null
     });
 
   } catch (err) {
@@ -2243,10 +2244,26 @@ Address: ${req.body.address}`,
 
     );
 
+    const draftOrder = shopifyResponse.data.draft_order;
+    const sessionId = tbcResponse.data.sessionId;
+    if (sessionId) {
+      try {
+        await axios.put(
+          `https://${SHOP}/admin/api/2024-01/draft_orders/${draftOrder.id}.json`,
+          { draft_order: { id: draftOrder.id, tags: 'TBC,TBC-STATUS-0', note: `${draftOrder.note}\nTBC Session ID: ${sessionId}\nTBC Status: 0` } },
+          { headers: { 'X-Shopify-Access-Token': ACCESS_TOKEN, 'Content-Type': 'application/json' } }
+        );
+      } catch (metadataError) {
+        console.log('TBC DRAFT METADATA ERROR:', metadataError.response?.status || metadataError.message);
+      }
+    }
+
     return res.json({
 
       draftOrderId:
-        shopifyResponse.data.draft_order.id,
+        draftOrder.id,
+
+      sessionId,
 
       redirectUrl:
         tbcResponse.data.redirectUrl
@@ -2338,13 +2355,27 @@ Address: ${req.body.address}`,
 
     );
 
+    const draftOrder = shopifyResponse.data.draft_order;
+    const sessionId = tbcResponse.data.sessionId;
+    if (sessionId) {
+      try {
+        await axios.put(
+          `https://${SHOP}/admin/api/2024-01/draft_orders/${draftOrder.id}.json`,
+          { draft_order: { id: draftOrder.id, tags: 'TBC,CART,TBC-STATUS-0', note: `${draftOrder.note}\nTBC Session ID: ${sessionId}\nTBC Status: 0` } },
+          { headers: { 'X-Shopify-Access-Token': ACCESS_TOKEN, 'Content-Type': 'application/json' } }
+        );
+      } catch (metadataError) {
+        console.log('TBC CART DRAFT METADATA ERROR:', metadataError.response?.status || metadataError.message);
+      }
+    }
+
     return res.json({
 
       draftOrderId:
-        shopifyResponse.data.draft_order.id,
+        draftOrder.id,
 
       sessionId:
-        tbcResponse.data.sessionId,
+        sessionId,
 
       redirectUrl:
         tbcResponse.data.redirectUrl
@@ -2435,10 +2466,26 @@ Address: ${req.body.address}`,
 
     );
 
+    const draftOrder = shopifyResponse.data.draft_order;
+    const orderCode = credoResponse.data.orderCode;
+    if (orderCode) {
+      try {
+        await axios.put(
+          `https://${SHOP}/admin/api/2024-01/draft_orders/${draftOrder.id}.json`,
+          { draft_order: { id: draftOrder.id, tags: 'CREDO,CREDO-STATUS-PENDING', note: `${draftOrder.note}\nCredo Order Code: ${orderCode}` } },
+          { headers: { 'X-Shopify-Access-Token': ACCESS_TOKEN, 'Content-Type': 'application/json' } }
+        );
+      } catch (metadataError) {
+        console.log('CREDO DRAFT METADATA ERROR:', metadataError.response?.status || metadataError.message);
+      }
+    }
+
     return res.json({
 
       draftOrderId:
-        shopifyResponse.data.draft_order.id,
+        draftOrder.id,
+
+      orderCode,
 
       redirectUrl:
         credoResponse.data.redirectUrl
@@ -2541,6 +2588,10 @@ Address: ${req.body.address}`,
 
 });
 
-app.listen(process.env.PORT || 3000);
+require('./tracker')(app, {
+  tbcApiKey: TBC_API_KEY_EZZY,
+  tbcApiSecret: TBC_API_SECRET_EZZY,
+  tbcMerchantKey: TBC_MERCHANT_KEY_EZZY
+});
 
-require('./tracker')(app);
+app.listen(process.env.PORT || 3000);

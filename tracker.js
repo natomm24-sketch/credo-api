@@ -42,7 +42,7 @@ function requestAllowed(req) {
 function setTrackerCors(req, res) {
   const origin = String(req.headers.origin || '');
   const allowedOrigin =
-    /^https:\/\/(?:www\.)?ezzy\.ge$/i.test(origin) ||
+    /^https:\/\/(?:www\.|order\.)?ezzy\.ge$/i.test(origin) ||
     /^https:\/\/[a-z0-9-]+\.[a-z0-9-]+\.chatgpt\.site$/i.test(origin) ||
     /^http:\/\/localhost(?::\d+)?$/i.test(origin);
   if (allowedOrigin) res.set('Access-Control-Allow-Origin', origin);
@@ -131,7 +131,55 @@ async function graphql(query, variables) {
   return response.data.data;
 }
 
-module.exports = function registerOrderTracker(app) {
+const TBC_STATUS_LABELS = {
+  0: 'ავტორიზაციას ელოდება',
+  1: 'განაცხადი მუშავდება',
+  2: 'დამტკიცდა',
+  3: 'ვადა ამოიწურა',
+  4: 'მომხმარებელმა გააუქმა',
+  5: 'მაღაზიის გადაწყვეტილებას ელოდება',
+  6: 'დაუარდა',
+  7: 'მაღაზიამ გააუქმა',
+  8: 'თანხა ჩარიცხულია',
+  9: 'ჩარიცხვას ელოდება',
+  10: 'ხელშეკრულების დადასტურებას ელოდება',
+  11: 'შემოსავლის დოკუმენტებს ელოდება',
+  12: 'დოკუმენტები მოწმდება',
+  13: 'შემოსავლის დოკუმენტები უარყოფილია',
+};
+
+function detectProvider(tags, note) {
+  const text = `${Array.isArray(tags) ? tags.join(' ') : tags || ''} ${note || ''}`.toLocaleUpperCase('ka-GE');
+  if (text.includes('TBC')) return 'TBC';
+  if (text.includes('CREDO')) return 'CREDO';
+  if (text.includes('KEEPZ')) return 'KEEPZ';
+  if (text.includes('BOG-BNPL')) return 'BOG_BNPL';
+  if (text.includes('BOG')) return 'BOG';
+  if (text.includes('კურიერთან') || text.includes('CASH ON DELIVERY') || /\bCOD\b/.test(text)) return 'COD';
+  return 'OTHER';
+}
+
+function extractApplicationMeta(tags, note, provider, fallbackStatus) {
+  const text = `${Array.isArray(tags) ? tags.join('\n') : tags || ''}\n${note || ''}`;
+  const sessionId = text.match(/TBC\s+Session\s+ID:\s*([0-9a-f-]{20,})/i)?.[1] || null;
+  const statusMatch = text.match(/TBC(?:-|\s+)STATUS(?:\s+ID)?(?:-|:|\s)+(\d{1,2})/i);
+  const statusId = statusMatch ? Number(statusMatch[1]) : null;
+  const credoCode = text.match(/Credo\s+Order\s+Code:\s*([\w-]+)/i)?.[1] || null;
+
+  let applicationStatus = fallbackStatus || 'განაცხადი შექმნილია';
+  if (provider === 'COD') applicationStatus = 'კურიერთან გადახდა';
+  if (provider === 'TBC' && statusId !== null) applicationStatus = TBC_STATUS_LABELS[statusId] || `სტატუსი ${statusId}`;
+
+  return { applicationStatus, applicationStatusId: statusId, applicationSessionId: sessionId, applicationCode: credoCode };
+}
+
+function getTbcStatusId(payload) {
+  const candidates = [payload?.statusId, payload?.status?.id, payload?.applicationStatusId, payload?.data?.statusId, payload?.data?.status?.id];
+  const value = candidates.find((item) => Number.isInteger(Number(item)));
+  return value === undefined ? null : Number(value);
+}
+
+module.exports = function registerOrderTracker(app, bankConfig = {}) {
   app.post('/api/track-order', async (req, res) => {
     setTrackerCors(req, res);
 
@@ -207,12 +255,12 @@ module.exports = function registerOrderTracker(app) {
   app.get('/api/admin/orders', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     const search = cleanAdminSearch(req.query?.q);
-    const query = `
+    const orderQuery = `
       query AdminOrders($search: String) {
         orders(first: 50, query: $search, sortKey: CREATED_AT, reverse: true) {
           nodes {
             id name createdAt displayFinancialStatus displayFulfillmentStatus
-            email phone note
+            email phone note tags
             totalPriceSet { shopMoney { amount currencyCode } }
             customer { displayName firstName lastName email phone }
             shippingAddress { name firstName lastName phone city address1 }
@@ -223,11 +271,28 @@ module.exports = function registerOrderTracker(app) {
       }
     `;
 
+    const draftQuery = `
+      query AdminDraftOrders($search: String) {
+        draftOrders(first: 50, query: $search, sortKey: UPDATED_AT, reverse: true) {
+          nodes {
+            id name createdAt updatedAt status tags note2 email phone
+            totalPriceSet { shopMoney { amount currencyCode } }
+            customer { displayName firstName lastName email phone }
+            shippingAddress { name firstName lastName phone city address1 }
+            lineItems(first: 50) { nodes { id name quantity variantTitle } }
+          }
+        }
+      }
+    `;
+
     try {
-      const data = await graphql(query, { search: search || null });
-      const orders = (data.orders?.nodes || []).map((order) => ({
+      const data = await graphql(orderQuery, { search: search || null });
+      const orders = (data.orders?.nodes || []).map((order) => {
+        const provider = detectProvider(order.tags, order.note);
+        return ({
         id: order.id,
         number: order.name,
+        kind: 'order',
         createdAt: order.createdAt,
         financialStatus: order.displayFinancialStatus,
         fulfillmentStatus: order.displayFulfillmentStatus,
@@ -242,6 +307,9 @@ module.exports = function registerOrderTracker(app) {
           address1: order.shippingAddress.address1 || '',
         } : null,
         note: order.note || '',
+        tags: order.tags || [],
+        provider,
+        ...extractApplicationMeta(order.tags, order.note, provider, ''),
         total: order.totalPriceSet?.shopMoney || null,
         items: (order.lineItems?.nodes || []).map((item) => ({
           id: item.id,
@@ -256,11 +324,86 @@ module.exports = function registerOrderTracker(app) {
           displayStatus: fulfillment.displayStatus || null,
           tracking: (fulfillment.trackingInfo || []).map((info) => ({ company: info.company || '', number: info.number || '', url: info.url || '' })),
         })),
-      }));
-      return res.json({ orders });
+      });
+      });
+
+      let drafts = [];
+      let draftWarning = null;
+      try {
+        const draftData = await graphql(draftQuery, { search: search || null });
+        drafts = (draftData.draftOrders?.nodes || []).map((draft) => {
+          const provider = detectProvider(draft.tags, draft.note2);
+          return {
+            id: draft.id,
+            number: draft.name,
+            kind: 'draft',
+            createdAt: draft.createdAt,
+            updatedAt: draft.updatedAt,
+            financialStatus: 'PENDING',
+            fulfillmentStatus: 'DRAFT',
+            draftStatus: draft.status,
+            customer: {
+              name: draft.customer?.displayName || draft.shippingAddress?.name || '',
+              email: draft.customer?.email || draft.email || '',
+              phone: draft.customer?.phone || draft.shippingAddress?.phone || draft.phone || '',
+            },
+            shippingAddress: draft.shippingAddress ? {
+              name: draft.shippingAddress.name || '',
+              city: draft.shippingAddress.city || '',
+              address1: draft.shippingAddress.address1 || '',
+            } : null,
+            note: draft.note2 || '',
+            tags: draft.tags || [],
+            provider,
+            ...extractApplicationMeta(draft.tags, draft.note2, provider),
+            total: draft.totalPriceSet?.shopMoney || null,
+            items: (draft.lineItems?.nodes || []).map((item) => ({
+              id: item.id,
+              name: item.name,
+              quantity: item.quantity,
+              variant: item.variantTitle || null,
+            })),
+            fulfillmentOrders: [],
+            fulfillments: [],
+          };
+        });
+      } catch (draftError) {
+        draftWarning = 'დრაფტების წაკითხვის უფლება ჯერ არ არის აქტიური.';
+        console.error('ADMIN DRAFT ORDERS ERROR:', draftError.response?.status || draftError.message);
+      }
+
+      const records = [...drafts, ...orders].sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+      return res.json({ orders: records, draftWarning });
     } catch (error) {
       console.error('ADMIN ORDERS ERROR:', error.response?.status || error.message);
       return res.status(503).json({ error: 'შეკვეთების ჩატვირთვა ვერ მოხერხდა.' });
+    }
+  });
+
+  app.get('/api/admin/tbc-status', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const sessionId = String(req.query?.sessionId || '').trim();
+    if (!/^[0-9a-f-]{20,}$/i.test(sessionId)) return res.status(400).json({ error: 'TBC განაცხადის ID არასწორია.' });
+
+    const { tbcApiKey, tbcApiSecret, tbcMerchantKey } = bankConfig;
+    if (!tbcApiKey || !tbcApiSecret || !tbcMerchantKey) return res.status(503).json({ error: 'TBC სტატუსის კავშირი ჯერ არ არის გამართული.' });
+
+    try {
+      const tokenResponse = await axios.post(
+        'https://api.tbcbank.ge/oauth/token',
+        new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: `Basic ${Buffer.from(`${tbcApiKey}:${tbcApiSecret}`).toString('base64')}` } },
+      );
+      const response = await axios.post(
+        `https://api.tbcbank.ge/v1/online-installments/applications/${encodeURIComponent(sessionId)}/status`,
+        { merchantKey: tbcMerchantKey },
+        { headers: { Authorization: `Bearer ${tokenResponse.data.access_token}`, 'Content-Type': 'application/json' } },
+      );
+      const statusId = getTbcStatusId(response.data);
+      return res.json({ sessionId, statusId, status: statusId === null ? 'სტატუსი მიღებულია' : (TBC_STATUS_LABELS[statusId] || `სტატუსი ${statusId}`) });
+    } catch (error) {
+      console.error('TBC STATUS ERROR:', error.response?.status || error.message);
+      return res.status(502).json({ error: 'ბანკის სტატუსის მიღება ვერ მოხერხდა.' });
     }
   });
 
