@@ -220,7 +220,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             customer { firstName lastName phone }
             shippingAddress { firstName lastName phone }
             billingAddress { firstName lastName phone }
-            lineItems(first: 20) { nodes { name quantity variantTitle image { url altText } } }
+            lineItems(first: 20) { nodes { name quantity variantTitle image { url altText } variant { product { handle onlineStoreUrl } } } }
             fulfillments { status trackingInfo(first: 10) { company number url } }
           }
         }
@@ -234,7 +234,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             totalPriceSet { shopMoney { amount currencyCode } }
             customer { firstName lastName phone }
             shippingAddress { firstName lastName phone }
-            lineItems(first: 20) { nodes { name quantity variantTitle image { url altText } } }
+            lineItems(first: 20) { nodes { name quantity variantTitle image { url altText } variant { product { handle onlineStoreUrl } } } }
           }
         }
       }
@@ -273,7 +273,8 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             name: item.name,
             quantity: item.quantity,
             variant: item.variantTitle || null,
-            
+            image: item.image ? { url: item.image.url, alt: item.image.altText || item.name } : null,
+            productUrl: item.variant?.product?.onlineStoreUrl || (item.variant?.product?.handle ? `https://ezzy.ge/products/${item.variant.product.handle}` : null),
           })),
           tracking: (order.fulfillments || []).flatMap((fulfillment) =>
             (fulfillment.trackingInfo || []).map((info) => ({
@@ -303,7 +304,8 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
               name: item.name,
               quantity: item.quantity,
               variant: item.variantTitle || null,
-              
+              image: item.image ? { url: item.image.url, alt: item.image.altText || item.name } : null,
+              productUrl: item.variant?.product?.onlineStoreUrl || (item.variant?.product?.handle ? `https://ezzy.ge/products/${item.variant.product.handle}` : null),
             })),
             tracking: [],
           };
@@ -328,7 +330,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             totalPriceSet { shopMoney { amount currencyCode } }
             customer { displayName firstName lastName email phone }
             shippingAddress { name firstName lastName phone city address1 }
-            lineItems(first: 50) { nodes { id name quantity variantTitle image { url altText } } }
+            lineItems(first: 50) { nodes { id name quantity variantTitle image { url altText } variant { product { handle onlineStoreUrl } } } }
             fulfillments { id status displayStatus trackingInfo(first: 10) { company number url } }
           }
         }
@@ -343,7 +345,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             totalPriceSet { shopMoney { amount currencyCode } }
             customer { displayName firstName lastName email phone }
             shippingAddress { name firstName lastName phone city address1 }
-            lineItems(first: 50) { nodes { id name quantity variantTitle image { url altText } } }
+            lineItems(first: 50) { nodes { id name quantity variantTitle image { url altText } variant { product { handle onlineStoreUrl } } } }
           }
         }
       }
@@ -380,7 +382,8 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
           name: item.name,
           quantity: item.quantity,
            variant: item.variantTitle || null,
-           
+           image: item.image ? { url: item.image.url, alt: item.image.altText || item.name } : null,
+           productUrl: item.variant?.product?.onlineStoreUrl || (item.variant?.product?.handle ? `https://ezzy.ge/products/${item.variant.product.handle}` : null),
         })),
         fulfillmentOrders: [],
         fulfillments: (order.fulfillments || []).map((fulfillment) => ({
@@ -427,7 +430,8 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
               name: item.name,
               quantity: item.quantity,
                variant: item.variantTitle || null,
-               
+               image: item.image ? { url: item.image.url, alt: item.image.altText || item.name } : null,
+               productUrl: item.variant?.product?.onlineStoreUrl || (item.variant?.product?.handle ? `https://ezzy.ge/products/${item.variant.product.handle}` : null),
             })),
             fulfillmentOrders: [],
             fulfillments: [],
