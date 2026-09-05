@@ -2591,7 +2591,9 @@ Address: ${req.body.address}`,
 require('./tracker')(app, {
   tbcApiKey: TBC_API_KEY_EZZY,
   tbcApiSecret: TBC_API_SECRET_EZZY,
-  tbcMerchantKey: TBC_MERCHANT_KEY_EZZY
+  tbcMerchantKey: TBC_MERCHANT_KEY_EZZY,
+  credoMerchantId: MERCHANT_ID_EZZY,
+  credoSecret: SECRET_EZZY
 });
 
 app.listen(process.env.PORT || 3000);

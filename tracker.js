@@ -148,6 +148,21 @@ const TBC_STATUS_LABELS = {
   13: 'შემოსავლის დოკუმენტები უარყოფილია',
 };
 
+const CREDO_STATUS_LABELS = {
+  2: 'განაცხადი მუშავდება',
+  3: 'დამტკიცდა',
+  4: 'ხელმოწერას ელოდება',
+  5: 'დასრულდა',
+  6: 'დაუარდა',
+  7: 'გაუქმდა',
+  9: 'ფილიალში გადაგზავნილია',
+  10: 'იდენტიფიკაციას ელოდება',
+  11: 'დრაფტი',
+  12: 'პროდუქტი გასაგზავნია',
+  13: 'ვიდეო მონიტორინგზეა გადაგზავნილი',
+  14: 'ბანკი ხელახლა განიხილავს',
+};
+
 function detectProvider(tags, note) {
   const text = `${Array.isArray(tags) ? tags.join(' ') : tags || ''} ${note || ''}`.toLocaleUpperCase('ka-GE');
   if (text.includes('TBC')) return 'TBC';
@@ -404,6 +419,40 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
     } catch (error) {
       console.error('TBC STATUS ERROR:', error.response?.status || error.message);
       return res.status(502).json({ error: 'ბანკის სტატუსის მიღება ვერ მოხერხდა.' });
+    }
+  });
+
+  app.get('/api/admin/credo-status', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const orderCode = String(req.query?.orderCode || '').trim();
+    if (!/^[A-Za-z0-9_-]{1,50}$/.test(orderCode)) return res.status(400).json({ error: 'Credo განაცხადის კოდი არასწორია.' });
+
+    const { credoMerchantId, credoSecret } = bankConfig;
+    if (!credoMerchantId || !credoSecret) return res.status(503).json({ error: 'Credo სტატუსის კავშირი ჯერ არ არის გამართული.' });
+
+    try {
+      const hash = crypto.createHash('md5').update(`${credoMerchantId}${orderCode}${credoSecret}`).digest('hex');
+      const response = await axios.get('https://ganvadeba.credo.ge/widget/api.php', {
+        params: { merchantId: credoMerchantId, orderCode, hash },
+        timeout: 15_000,
+        validateStatus: () => true,
+      });
+      const payload = response.data || {};
+      if (Number(payload.status) !== 200 || !Number.isInteger(Number(payload.data))) {
+        const unavailable = Number(payload.status) === 404
+          ? 'Credo-ში განაცხადი ვერ მოიძებნა.'
+          : 'Credo-ს სტატუსი ჯერ ხელმისაწვდომი არ არის. განაცხადის შექმნიდან 30 წუთის შემდეგ სცადეთ.';
+        return res.status(404).json({ error: unavailable });
+      }
+      const statusId = Number(payload.data);
+      return res.json({
+        orderCode,
+        statusId,
+        status: CREDO_STATUS_LABELS[statusId] || `Credo სტატუსი ${statusId}`,
+      });
+    } catch (error) {
+      console.error('CREDO STATUS ERROR:', error.response?.status || error.message);
+      return res.status(502).json({ error: 'Credo-ს სტატუსის მიღება ვერ მოხერხდა.' });
     }
   });
 
