@@ -105,22 +105,22 @@ app.post('/api/credo-order', async (req, res) => {
     formattedProducts.forEach(p => {
       stringToHash += p.id + p.title + p.amount + p.price + "0";
     });
-    stringToHash += SECRET_EZZY;
+    stringToHash += SECRET_COMFORT;
 
     const check = crypto
       .createHash('md5')
       .update(stringToHash)
       .digest('hex');
-console.log("CREDO MERCHANT:", MERCHANT_ID_EZZY);
+console.log("CREDO MERCHANT:", MERCHANT_ID_COMFORT);
 
 console.log("CREDO REQUEST:", {
-  merchantId: MERCHANT_ID_EZZY,
+  merchantId: MERCHANT_ID_COMFORT,
   orderCode,
   products: formattedProducts
 });
     
     const data = {
-      merchantId: MERCHANT_ID_EZZY,
+      merchantId: MERCHANT_ID_COMFORT,
       orderCode: orderCode,
       check: check,
       installmentLength: 12
@@ -248,7 +248,7 @@ app.post('/api/tbc-order', async (req, res) => {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Authorization': 'Basic ' + Buffer.from(
-  TBC_API_KEY_EZZY + ':' + TBC_API_SECRET_EZZY
+  TBC_API_KEY_COMFORT + ':' + TBC_API_SECRET_COMFORT
 ).toString('base64')
         }
       }
@@ -260,8 +260,8 @@ app.post('/api/tbc-order', async (req, res) => {
     const tbcResponse = await axios.post(
       'https://api.tbcbank.ge/v1/online-installments/applications',
       {
-        merchantKey: TBC_MERCHANT_KEY_EZZY,
-campaignId: TBC_CAMPAIGN_ID_EZZY,
+        merchantKey: TBC_MERCHANT_COMFORT,
+campaignId: TBC_CAMPAIGN_COMFORT,
      priceTotal: Number(
   products.reduce((sum, p) => {
 
@@ -356,9 +356,9 @@ app.post('/api/tbc-order-cart', async (req, res) => {
           'Authorization':
             'Basic ' +
             Buffer.from(
-              TBC_API_KEY_EZZY +
+              TBC_API_KEY_COMFORT +
               ':' +
-              TBC_API_SECRET_EZZY
+              TBC_API_SECRET_COMFORT
             ).toString('base64')
         }
       }
@@ -384,8 +384,8 @@ app.post('/api/tbc-order-cart', async (req, res) => {
     const tbcResponse = await axios.post(
       'https://api.tbcbank.ge/v1/online-installments/applications',
       {
-        merchantKey: TBC_MERCHANT_KEY_EZZY,
-        campaignId: TBC_CAMPAIGN_ID_EZZY,
+        merchantKey: TBC_MERCHANT_COMFORT,
+        campaignId: TBC_CAMPAIGN_COMFORT,
 
         priceTotal,
 
@@ -2589,11 +2589,11 @@ Address: ${req.body.address}`,
 });
 
 require('./tracker')(app, {
-  tbcApiKey: TBC_API_KEY_EZZY,
-  tbcApiSecret: TBC_API_SECRET_EZZY,
-  tbcMerchantKey: TBC_MERCHANT_KEY_EZZY,
-  credoMerchantId: MERCHANT_ID_EZZY,
-  credoSecret: SECRET_EZZY
+  tbcApiKey: TBC_API_KEY_COMFORT,
+  tbcApiSecret: TBC_API_SECRET_COMFORT,
+  tbcMerchantKey: TBC_MERCHANT_COMFORT,
+  credoMerchantId: MERCHANT_ID_COMFORT,
+  credoSecret: SECRET_COMFORT
 });
 
 app.listen(process.env.PORT || 3000);
