@@ -1,3 +1,4 @@
+     data[`products[${i}][price]`] = p.price;
 const express = require('express');
 /* ===================== EZZY PRODUCT REVIEWS ===================== */
 
@@ -1457,7 +1458,7 @@ console.log("CREDO REQUEST:", {
       data[`products[${i}][id]`] = p.id;
       data[`products[${i}][title]`] = p.title;
       data[`products[${i}][amount]`] = p.amount;
-      data[`products[${i}][price]`] = p.price;
+ 
       data[`products[${i}][type]`] = 0;
     });
 
