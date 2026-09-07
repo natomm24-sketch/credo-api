@@ -1,4 +1,142 @@
 const express = require('express');
+/* ===================== EZZY PRODUCT REVIEWS ===================== */
+
+const reviewRateLimits = new Map();
+const reviewWriteQueues = new Map();
+const REVIEW_NAMESPACE = 'ezzy';
+const REVIEW_KEY = 'product_reviews';
+
+function isEzzyStorefrontRequest(req) {
+  const origin = String(req.get('origin') || '');
+  if (!origin) return true;
+  try {
+    const hostname = new URL(origin).hostname.toLowerCase();
+    return hostname === 'ezzy.ge' || hostname === 'www.ezzy.ge' || hostname.endsWith('.myshopify.com');
+  } catch (_) {
+    return false;
+  }
+}
+
+function cleanReviewText(value, maxLength) {
+  return String(value || '')
+    .replace(/[<>]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+}
+
+async function getReviewMetafield(productId) {
+  const response = await axios.get(
+    `https://${SHOP}/admin/api/2026-04/products/${productId}/metafields.json`,
+    {
+      params: { namespace: REVIEW_NAMESPACE, key: REVIEW_KEY },
+      headers: { 'X-Shopify-Access-Token': ACCESS_TOKEN }
+    }
+  );
+  return response.data.metafields?.find(
+    field => field.namespace === REVIEW_NAMESPACE && field.key === REVIEW_KEY
+  ) || null;
+}
+
+function parseStoredReviews(metafield) {
+  if (!metafield?.value) return [];
+  try {
+    const reviews = JSON.parse(metafield.value);
+    return Array.isArray(reviews) ? reviews : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function summarizeReviews(reviews) {
+  const visible = reviews.filter(review => review.approved !== false);
+  const total = visible.reduce((sum, review) => sum + Number(review.rating || 0), 0);
+  return {
+    average: visible.length ? Number((total / visible.length).toFixed(1)) : 0,
+    count: visible.length,
+    reviews: visible.slice().reverse()
+  };
+}
+
+app.get('/api/reviews', async (req, res) => {
+  if (!isEzzyStorefrontRequest(req)) return res.status(403).json({ error: 'Origin not allowed' });
+  const productId = String(req.query.productId || '').replace(/\D/g, '');
+  if (!productId) return res.status(400).json({ error: 'Product ID required' });
+
+  try {
+    const metafield = await getReviewMetafield(productId);
+    return res.json(summarizeReviews(parseStoredReviews(metafield)));
+  } catch (error) {
+    console.error('REVIEWS GET ERROR:', error.response?.status || error.message);
+    return res.status(500).json({ error: 'Reviews unavailable' });
+  }
+});
+
+app.post('/api/reviews', async (req, res) => {
+  if (!isEzzyStorefrontRequest(req)) return res.status(403).json({ error: 'Origin not allowed' });
+
+  const productId = String(req.body.productId || '').replace(/\D/g, '');
+  const productHandle = cleanReviewText(req.body.productHandle, 120);
+  const name = cleanReviewText(req.body.name, 50);
+  const comment = cleanReviewText(req.body.comment, 600);
+  const rating = Number(req.body.rating);
+  if (!productId || !name || !comment || !Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return res.status(400).json({ error: 'Invalid review' });
+  }
+
+  const clientKey = `${req.ip}:${productId}`;
+  const now = Date.now();
+  const recent = (reviewRateLimits.get(clientKey) || []).filter(time => now - time < 10 * 60 * 1000);
+  if (recent.length >= 3) return res.status(429).json({ error: 'Please try again later' });
+  reviewRateLimits.set(clientKey, [...recent, now]);
+
+  const previousQueue = reviewWriteQueues.get(productId) || Promise.resolve();
+  const writeTask = previousQueue.then(async () => {
+    const metafield = await getReviewMetafield(productId);
+    const reviews = parseStoredReviews(metafield).slice(-199);
+    reviews.push({
+      id: crypto.randomUUID(),
+      productHandle,
+      name,
+      rating,
+      comment,
+      createdAt: new Date().toISOString(),
+      approved: true
+    });
+
+    const payload = {
+      metafield: {
+        namespace: REVIEW_NAMESPACE,
+        key: REVIEW_KEY,
+        type: 'json',
+        value: JSON.stringify(reviews)
+      }
+    };
+
+    if (metafield?.id) {
+      await axios.put(
+        `https://${SHOP}/admin/api/2026-04/metafields/${metafield.id}.json`,
+        { metafield: { id: metafield.id, value: payload.metafield.value, type: 'json' } },
+        { headers: { 'X-Shopify-Access-Token': ACCESS_TOKEN, 'Content-Type': 'application/json' } }
+      );
+    } else {
+      await axios.post(
+        `https://${SHOP}/admin/api/2026-04/products/${productId}/metafields.json`,
+        payload,
+        { headers: { 'X-Shopify-Access-Token': ACCESS_TOKEN, 'Content-Type': 'application/json' } }
+      );
+    }
+    return summarizeReviews(reviews);
+  });
+
+  reviewWriteQueues.set(productId, writeTask.catch(() => {}));
+  try {
+    return res.status(201).json(await writeTask);
+  } catch (error) {
+    console.error('REVIEWS POST ERROR:', error.response?.status || error.message);
+    return res.status(500).json({ error: 'Review could not be saved' });
+  }
+});
 const cors = require('cors');
 const crypto = require('crypto');
 const axios = require('axios');
