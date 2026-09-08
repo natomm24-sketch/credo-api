@@ -138,9 +138,8 @@ app.post('/api/reviews', async (req, res) => {
   const productId = String(req.body.productId || '').replace(/\D/g, '');
   const productHandle = cleanReviewText(req.body.productHandle, 120);
   const name = cleanReviewText(req.body.name, 50);
-  const comment = cleanReviewText(req.body.comment, 600);
   const rating = Number(req.body.rating);
-  if (!productId || !name || !comment || !Number.isInteger(rating) || rating < 1 || rating > 5) {
+  if (!productId || !name || !Number.isInteger(rating) || rating < 1 || rating > 5) {
     return res.status(400).json({ error: 'Invalid review' });
   }
 
@@ -159,7 +158,6 @@ app.post('/api/reviews', async (req, res) => {
       productHandle,
       name,
       rating,
-      comment,
       createdAt: new Date().toISOString(),
       approved: true
     });
@@ -2736,3 +2734,4 @@ require('./tracker')(app, {
 });
 
 app.listen(process.env.PORT || 3000);
+
