@@ -5,6 +5,7 @@ const axios = require('axios');
 const qs = require('qs');
 const Keepz = require('./keepz');
 const { v4: uuidv4 } = require('uuid');
+const { sendMetaPurchase } = require('./meta-capi');
 
 const app = express();
 const pendingOrders = {};
@@ -1566,6 +1567,7 @@ app.post('/api/keepz-order', async (req, res) => {
 
     // 🔒 თანხის დაცული გამოთვლა backend-ზე
     let total = 0;
+    const trustedProducts = [];
 
 for (const p of products) {
 
@@ -1579,11 +1581,18 @@ for (const p of products) {
   );
 
   const realPrice = Number(shopifyRes.data.variant.price);
+  const quantity = Number(p.amount) || 1;
 
-  total += realPrice * (Number(p.amount) || 1);
+  total += realPrice * quantity;
+  trustedProducts.push({
+    id: Number(p.id),
+    quantity,
+    item_price: realPrice
+  });
 }
 
 const amount = Number(total.toFixed(2));
+const orderId = uuidv4();
 
     if (!amount || isNaN(amount)) {
       return res.status(400).json({ error: "Invalid amount" });
@@ -1613,9 +1622,16 @@ const draftOrderResponse = await axios.post(
   note: `KEEPZ
 
 Name: ${req.body.customer?.name || ''}
-Phone: ${req.body.customer?.phone || ''}`,
+Phone: ${req.body.customer?.phone || ''}
+Keepz Order ID: ${orderId}
+Keepz Amount: ${amount.toFixed(2)} GEL`,
 
-  tags: "KEEPZ",
+  note_attributes: [
+    { name: "keepz_order_id", value: orderId },
+    { name: "keepz_amount", value: amount.toFixed(2) }
+  ],
+
+  tags: `KEEPZ, Keepz:${orderId}`,
 
    use_customer_default_address: false
     }
@@ -1636,11 +1652,11 @@ console.log(
   KEEPZ_PUBLIC_KEY_EZZY,
   KEEPZ_PRIVATE_KEY_EZZY
 );
-  const orderId = uuidv4();
 
 pendingOrders[orderId] = {
   customer: req.body.customer,
-  products: req.body.products,
+  products: trustedProducts,
+  amount,
   draftOrderId: draftOrderResponse.data.draft_order.id,
   createdAt: Date.now()
 };
@@ -1716,11 +1732,6 @@ return res.json({
   orderId: orderId
 });
 
-    return res.json({
-      redirectUrl: decrypted.redirectUrl,
-      orderId: orderId
-    });
-
   } catch (err) {
     console.error("KEEPZ ERROR:", err.response?.data || err.message);
     return res.status(500).json({
@@ -1728,47 +1739,177 @@ return res.json({
     });
   }
 });
+
+const KEEPZ_RECEIVER_ID_EZZY = 'a5c389e9-2823-4e8d-a8ef-193be7f3c5ab';
+const SHOPIFY_API_VERSION = '2026-07';
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''));
+}
+
+async function verifyKeepzPayment(orderId) {
+  const keepz = new Keepz(KEEPZ_PUBLIC_KEY_EZZY, KEEPZ_PRIVATE_KEY_EZZY);
+  const encrypted = keepz.encrypt({
+    integratorId: KEEPZ_INTEGRATOR_ID_EZZY,
+    integratorOrderId: orderId
+  });
+
+  const response = await axios.get(
+    'https://gateway.keepz.me/ecommerce-service/api/integrator/order/status',
+    {
+      params: {
+        identifier: KEEPZ_INTEGRATOR_ID_EZZY,
+        encryptedData: encrypted.encryptedData,
+        encryptedKeys: encrypted.encryptedKeys,
+        aes: true
+      },
+      timeout: 10000
+    }
+  );
+
+  return keepz.decrypt(
+    response.data.encryptedData,
+    response.data.encryptedKeys
+  );
+}
+
+async function getKeepzDraft(orderId, draftOrderId) {
+  const headers = { 'X-Shopify-Access-Token': await getEzzyAccessToken() };
+
+  if (draftOrderId) {
+    const response = await axios.get(
+      `https://${SHOP}/admin/api/${SHOPIFY_API_VERSION}/draft_orders/${draftOrderId}.json`,
+      { headers, timeout: 10000 }
+    );
+    return response.data.draft_order;
+  }
+
+  const response = await axios.get(
+    `https://${SHOP}/admin/api/${SHOPIFY_API_VERSION}/draft_orders.json`,
+    {
+      headers,
+      params: { status: 'any', limit: 250 },
+      timeout: 10000
+    }
+  );
+
+  return (response.data.draft_orders || []).find(draft =>
+    (draft.note_attributes || []).some(attribute =>
+      attribute.name === 'keepz_order_id' && attribute.value === orderId
+    ) || String(draft.note || '').includes(`Keepz Order ID: ${orderId}`)
+  );
+}
+
+function keepzOrderFromDraft(draft) {
+  const fullName = draft.shipping_address?.name
+    || [draft.shipping_address?.first_name, draft.shipping_address?.last_name].filter(Boolean).join(' ')
+    || draft.customer?.first_name
+    || '';
+  const keepzAmount = (draft.note_attributes || []).find(attribute =>
+    attribute.name === 'keepz_amount'
+  )?.value;
+
+  return {
+    customer: {
+      name: fullName,
+      phone: draft.shipping_address?.phone || draft.customer?.phone || ''
+    },
+    amount: Number(keepzAmount || draft.total_price),
+    products: (draft.line_items || []).map(item => ({
+      id: item.variant_id || item.product_id,
+      quantity: Number(item.quantity) || 1,
+      item_price: Number(item.price)
+    }))
+  };
+}
+
+async function completeKeepzDraft(draft) {
+  if (draft.order_id || draft.status === 'completed') return draft;
+
+  const headers = { 'X-Shopify-Access-Token': await getEzzyAccessToken() };
+
+  try {
+    const response = await axios.put(
+      `https://${SHOP}/admin/api/${SHOPIFY_API_VERSION}/draft_orders/${draft.id}/complete.json`,
+      null,
+      { headers, timeout: 15000 }
+    );
+    return response.data.draft_order;
+  } catch (error) {
+    if (error.response?.status !== 422) throw error;
+
+    const response = await axios.get(
+      `https://${SHOP}/admin/api/${SHOPIFY_API_VERSION}/draft_orders/${draft.id}.json`,
+      { headers, timeout: 10000 }
+    );
+    if (!response.data.draft_order?.order_id) throw error;
+    return response.data.draft_order;
+  }
+}
+
 app.post('/api/keepz-callback', async (req, res) => {
   try {
-    console.log("KEEPZ CALLBACK:", req.body);
+    const {
+      status,
+      integratorOrderId,
+      integratorId,
+      receiverId,
+      amount,
+      initialCurrency
+    } = req.body;
 
-    const { status, integratorOrderId } = req.body;
-
-    // მხოლოდ წარმატებული გადახდა
     if (status !== "SUCCESS") {
       return res.sendStatus(200);
     }
 
-    // ⚠️ აქ უნდა გქონდეს შენახული products (შემდეგ ეტაპზე დავამატებთ)
-    const products = req.body.products || [];
-
-    if (!products.length) {
-      console.log("No products in callback");
-      return res.sendStatus(200);
+    if (
+      !isUuid(integratorOrderId)
+      || integratorId !== KEEPZ_INTEGRATOR_ID_EZZY
+      || receiverId !== KEEPZ_RECEIVER_ID_EZZY
+      || (initialCurrency && initialCurrency !== 'GEL')
+    ) {
+      return res.sendStatus(400);
     }
 
-    // Shopify order შექმნა
-    const shopifyResponse = await axios.post(
-      `https://${SHOP}/admin/api/2024-01/orders.json`,
-      {
-        order: {
-          line_items: products.map(p => ({
-            variant_id: Number(p.id),
-            quantity: p.amount || 1
-          })),
-          financial_status: "paid",
-          note: `Keepz Order ID: ${integratorOrderId}`
-        }
-      },
-      {
-        headers: {
-          'X-Shopify-Access-Token': await getEzzyAccessToken(),
-          'Content-Type': 'application/json'
-        }
-      }
-    );
+    const verified = await verifyKeepzPayment(integratorOrderId);
+    if (verified.integratorOrderId !== integratorOrderId || verified.status !== 'SUCCESS') {
+      return res.sendStatus(409);
+    }
 
-    console.log("SHOPIFY ORDER CREATED:", shopifyResponse.data.order.id);
+    const pending = pendingOrders[integratorOrderId];
+    const draft = await getKeepzDraft(integratorOrderId, pending?.draftOrderId);
+    if (!draft) throw new Error('Keepz draft order not found');
+
+    const savedOrder = pending || keepzOrderFromDraft(draft);
+    const callbackAmount = Number(amount);
+    if (
+      !Number.isFinite(callbackAmount)
+      || !Number.isFinite(Number(savedOrder.amount))
+      || Math.abs(callbackAmount - Number(savedOrder.amount)) > 0.009
+    ) {
+      return res.sendStatus(409);
+    }
+
+    const completedDraft = await completeKeepzDraft(draft);
+
+    await sendMetaPurchase({
+      eventId: `keepz-purchase-${integratorOrderId}`,
+      orderId: completedDraft.order_id || integratorOrderId,
+      value: savedOrder.amount,
+      currency: 'GEL',
+      contents: savedOrder.products,
+      customer: savedOrder.customer,
+      sourceUrl: 'https://ezzy.ge/'
+    });
+
+    pendingOrders[integratorOrderId] = {
+      ...savedOrder,
+      draftOrderId: draft.id,
+      shopifyOrderId: completedDraft.order_id,
+      completedAt: Date.now()
+    };
+
+    console.log('KEEPZ PAYMENT FULFILLED:', integratorOrderId);
 
     res.sendStatus(200);
 
@@ -1789,56 +1930,15 @@ app.post('/api/keepz-success', async (req, res) => {
       });
     }
 
-    const savedOrder = pendingOrders[orderId];
-
-    if (!savedOrder) {
-      return res.status(404).json({
-        error: 'Order not found'
-      });
+    if (!isUuid(orderId)) {
+      return res.status(400).json({ error: 'Invalid order ID' });
     }
 
-    console.log('SUCCESS ORDER:', savedOrder);
-   await axios.post(
+    const verified = await verifyKeepzPayment(orderId);
 
-  `https://${SHOPIFY_STORE}/admin/api/2026-04/orders.json`,
-
-  {
-    order: {
-
-      line_items: savedOrder.products.map(p => ({
-        variant_id: Number(p.id),
-        quantity: p.amount
-      })),
-
-     customer: {
-  first_name: savedOrder.customer.name,
-  phone: savedOrder.customer.phone
-},
-
-billing_address: {
-  first_name: savedOrder.customer.name,
-  phone: savedOrder.customer.phone,
-  country: "Georgia"
-},
-
-      financial_status: 'paid',
-note: `Name: ${savedOrder.customer.name}
-Phone: ${savedOrder.customer.phone}`,
-      tags: 'KEEPZ'
-
-    }
-  },
-
-  {
-    headers: {
-      'X-Shopify-Access-Token': await getEzzyAccessToken(),
-      'Content-Type': 'application/json'
-    }
-  }
-
-);
     return res.json({
-      success: true
+      success: verified.status === 'SUCCESS',
+      status: verified.status
     });
 
   } catch (e) {
