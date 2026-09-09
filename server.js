@@ -198,9 +198,9 @@ app.post('/api/reviews', async (req, res) => {
 });
 
 
-const SHOP = "ezzy-ge.myshopify.com";
+const SHOP = EZZY_SHOP;
 
-const SHOPIFY_STORE = 'ezzy-ge.myshopify.com';
+const SHOPIFY_STORE = EZZY_SHOP;
 
 const SHOPIFY_CLIENT_ID = '3f09333ae04b00e338137653ea48a8e2';
 const SHOPIFY_CLIENT_SECRET = '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';
