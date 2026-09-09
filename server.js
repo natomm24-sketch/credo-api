@@ -65,6 +65,7 @@ const reviewRateLimits = new Map();
 const reviewWriteQueues = new Map();
 const REVIEW_NAMESPACE = 'ezzy';
 const REVIEW_KEY = 'product_reviews';
+const { shop: REVIEW_SHOP, getAccessToken: getReviewAccessToken } = require('./tracker').shopify;
 
 function isEzzyStorefrontRequest(req) {
   const origin = String(req.get('origin') || '');
@@ -87,10 +88,10 @@ function cleanReviewText(value, maxLength) {
 
 async function getReviewMetafield(productId) {
   const response = await axios.get(
-    `https://${SHOP}/admin/api/2026-04/products/${productId}/metafields.json`,
+    `https://${REVIEW_SHOP}/admin/api/2026-04/products/${productId}/metafields.json`,
     {
       params: { namespace: REVIEW_NAMESPACE, key: REVIEW_KEY },
-      headers: { 'X-Shopify-Access-Token': ACCESS_TOKEN }
+      headers: { 'X-Shopify-Access-Token': await getReviewAccessToken() }
     }
   );
   return response.data.metafields?.find(
@@ -173,15 +174,15 @@ app.post('/api/reviews', async (req, res) => {
 
     if (metafield?.id) {
       await axios.put(
-        `https://${SHOP}/admin/api/2026-04/metafields/${metafield.id}.json`,
+        `https://${REVIEW_SHOP}/admin/api/2026-04/metafields/${metafield.id}.json`,
         { metafield: { id: metafield.id, value: payload.metafield.value, type: 'json' } },
-        { headers: { 'X-Shopify-Access-Token': ACCESS_TOKEN, 'Content-Type': 'application/json' } }
+        { headers: { 'X-Shopify-Access-Token': await getReviewAccessToken(), 'Content-Type': 'application/json' } }
       );
     } else {
       await axios.post(
-        `https://${SHOP}/admin/api/2026-04/products/${productId}/metafields.json`,
+        `https://${REVIEW_SHOP}/admin/api/2026-04/products/${productId}/metafields.json`,
         payload,
-        { headers: { 'X-Shopify-Access-Token': ACCESS_TOKEN, 'Content-Type': 'application/json' } }
+        { headers: { 'X-Shopify-Access-Token': await getReviewAccessToken(), 'Content-Type': 'application/json' } }
       );
     }
     return summarizeReviews(reviews);
