@@ -65,7 +65,7 @@ const reviewRateLimits = new Map();
 const reviewWriteQueues = new Map();
 const REVIEW_NAMESPACE = 'ezzy';
 const REVIEW_KEY = 'product_reviews';
-const { shop: REVIEW_SHOP, getAccessToken: getReviewAccessToken } = require('./tracker').shopify;
+const { shop: EZZY_SHOP, getAccessToken: getEzzyAccessToken } = require('./tracker').shopify;
 
 function isEzzyStorefrontRequest(req) {
   const origin = String(req.get('origin') || '');
@@ -88,10 +88,10 @@ function cleanReviewText(value, maxLength) {
 
 async function getReviewMetafield(productId) {
   const response = await axios.get(
-    `https://${REVIEW_SHOP}/admin/api/2026-04/products/${productId}/metafields.json`,
+    `https://${EZZY_SHOP}/admin/api/2026-04/products/${productId}/metafields.json`,
     {
       params: { namespace: REVIEW_NAMESPACE, key: REVIEW_KEY },
-      headers: { 'X-Shopify-Access-Token': await getReviewAccessToken() }
+      headers: { 'X-Shopify-Access-Token': await getEzzyAccessToken() }
     }
   );
   return response.data.metafields?.find(
@@ -174,15 +174,15 @@ app.post('/api/reviews', async (req, res) => {
 
     if (metafield?.id) {
       await axios.put(
-        `https://${REVIEW_SHOP}/admin/api/2026-04/metafields/${metafield.id}.json`,
+        `https://${EZZY_SHOP}/admin/api/2026-04/metafields/${metafield.id}.json`,
         { metafield: { id: metafield.id, value: payload.metafield.value, type: 'json' } },
-        { headers: { 'X-Shopify-Access-Token': await getReviewAccessToken(), 'Content-Type': 'application/json' } }
+        { headers: { 'X-Shopify-Access-Token': await getEzzyAccessToken(), 'Content-Type': 'application/json' } }
       );
     } else {
       await axios.post(
-        `https://${REVIEW_SHOP}/admin/api/2026-04/products/${productId}/metafields.json`,
+        `https://${EZZY_SHOP}/admin/api/2026-04/products/${productId}/metafields.json`,
         payload,
-        { headers: { 'X-Shopify-Access-Token': await getReviewAccessToken(), 'Content-Type': 'application/json' } }
+        { headers: { 'X-Shopify-Access-Token': await getEzzyAccessToken(), 'Content-Type': 'application/json' } }
       );
     }
     return summarizeReviews(reviews);
@@ -199,8 +199,6 @@ app.post('/api/reviews', async (req, res) => {
 
 
 const SHOP = "ezzy-ge.myshopify.com";
-const ACCESS_TOKEN = "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";
-
 
 const SHOPIFY_STORE = 'ezzy-ge.myshopify.com';
 
@@ -340,7 +338,7 @@ Address: ${req.body.address}`,
       },
       {
         headers: {
-          'X-Shopify-Access-Token': ACCESS_TOKEN,
+          'X-Shopify-Access-Token': await getEzzyAccessToken(),
           'Content-Type': 'application/json'
         }
       }
@@ -654,7 +652,7 @@ app.post('/api/create-order-and-cod-ezzy', async (req, res) => {
 
       {
         headers: {
-          'X-Shopify-Access-Token': ACCESS_TOKEN,
+          'X-Shopify-Access-Token': await getEzzyAccessToken(),
           'Content-Type': 'application/json'
         }
       }
@@ -732,7 +730,7 @@ Address: ${req.body.address}`,
 
       {
         headers: {
-          'X-Shopify-Access-Token': ACCESS_TOKEN,
+          'X-Shopify-Access-Token': await getEzzyAccessToken(),
           'Content-Type': 'application/json'
         }
       }
@@ -1161,7 +1159,7 @@ Address: ${req.body.address}`,
 
   {
     headers: {
-      'X-Shopify-Access-Token': ACCESS_TOKEN,
+      'X-Shopify-Access-Token': await getEzzyAccessToken(),
       'Content-Type': 'application/json'
     }
   }
@@ -1378,7 +1376,7 @@ Address: ${req.body.address}`,
       },
       {
         headers: {
-          'X-Shopify-Access-Token': ACCESS_TOKEN_COMFORT,
+          'X-Shopify-Access-Token': await getEzzyAccessToken()_COMFORT,
           'Content-Type': 'application/json'
         }
       }
@@ -1518,7 +1516,7 @@ app.post('/api/create-order-and-bank', async (req, res) => {
       },
       {
         headers: {
-          'X-Shopify-Access-Token': ACCESS_TOKEN_COMFORT,
+          'X-Shopify-Access-Token': await getEzzyAccessToken()_COMFORT,
           'Content-Type': 'application/json'
         }
       }
@@ -1575,7 +1573,7 @@ for (const p of products) {
     `https://${SHOP}/admin/api/2024-01/variants/${p.id}.json`,
     {
       headers: {
-        'X-Shopify-Access-Token': ACCESS_TOKEN
+        'X-Shopify-Access-Token': await getEzzyAccessToken()
       }
     }
   );
@@ -1624,7 +1622,7 @@ Phone: ${req.body.customer?.phone || ''}`,
   },
   {
     headers: {
-      'X-Shopify-Access-Token': ACCESS_TOKEN,
+      'X-Shopify-Access-Token': await getEzzyAccessToken(),
       'Content-Type': 'application/json'
     }
   }
@@ -1764,7 +1762,7 @@ app.post('/api/keepz-callback', async (req, res) => {
       },
       {
         headers: {
-          'X-Shopify-Access-Token': ACCESS_TOKEN,
+          'X-Shopify-Access-Token': await getEzzyAccessToken(),
           'Content-Type': 'application/json'
         }
       }
@@ -1833,7 +1831,7 @@ Phone: ${savedOrder.customer.phone}`,
 
   {
     headers: {
-      'X-Shopify-Access-Token': ACCESS_TOKEN,
+      'X-Shopify-Access-Token': await getEzzyAccessToken(),
       'Content-Type': 'application/json'
     }
   }
@@ -1888,7 +1886,7 @@ app.post('/api/keepz-order-comfortmix', async (req, res) => {
 
         {
           headers: {
-            'X-Shopify-Access-Token': ACCESS_TOKEN_COMFORT
+            'X-Shopify-Access-Token': await getEzzyAccessToken()_COMFORT
           }
         }
 
@@ -2220,7 +2218,7 @@ Address: ${req.body.address}`,
       },
       {
         headers: {
-          'X-Shopify-Access-Token': ACCESS_TOKEN_COMFORT,
+          'X-Shopify-Access-Token': await getEzzyAccessToken()_COMFORT,
           'Content-Type': 'application/json'
         }
       }
@@ -2293,7 +2291,7 @@ Address: ${req.body.address}`,
 
       {
         headers: {
-          'X-Shopify-Access-Token': ACCESS_TOKEN_COMFORT,
+          'X-Shopify-Access-Token': await getEzzyAccessToken()_COMFORT,
           'Content-Type': 'application/json'
         }
       }
@@ -2360,7 +2358,7 @@ Address: ${req.body.address}`,
 
       {
         headers: {
-          'X-Shopify-Access-Token': ACCESS_TOKEN,
+          'X-Shopify-Access-Token': await getEzzyAccessToken(),
           'Content-Type': 'application/json'
         }
       }
@@ -2389,7 +2387,7 @@ Address: ${req.body.address}`,
         await axios.put(
           `https://${SHOP}/admin/api/2024-01/draft_orders/${draftOrder.id}.json`,
           { draft_order: { id: draftOrder.id, tags: 'TBC,TBC-STATUS-0', note: `${draftOrder.note}\nTBC Session ID: ${sessionId}\nTBC Status: 0` } },
-          { headers: { 'X-Shopify-Access-Token': ACCESS_TOKEN, 'Content-Type': 'application/json' } }
+          { headers: { 'X-Shopify-Access-Token': await getEzzyAccessToken(), 'Content-Type': 'application/json' } }
         );
       } catch (metadataError) {
         console.log('TBC DRAFT METADATA ERROR:', metadataError.response?.status || metadataError.message);
@@ -2471,7 +2469,7 @@ Address: ${req.body.address}`,
 
       {
         headers: {
-          'X-Shopify-Access-Token': ACCESS_TOKEN,
+          'X-Shopify-Access-Token': await getEzzyAccessToken(),
           'Content-Type': 'application/json'
         }
       }
@@ -2500,7 +2498,7 @@ Address: ${req.body.address}`,
         await axios.put(
           `https://${SHOP}/admin/api/2024-01/draft_orders/${draftOrder.id}.json`,
           { draft_order: { id: draftOrder.id, tags: 'TBC,CART,TBC-STATUS-0', note: `${draftOrder.note}\nTBC Session ID: ${sessionId}\nTBC Status: 0` } },
-          { headers: { 'X-Shopify-Access-Token': ACCESS_TOKEN, 'Content-Type': 'application/json' } }
+          { headers: { 'X-Shopify-Access-Token': await getEzzyAccessToken(), 'Content-Type': 'application/json' } }
         );
       } catch (metadataError) {
         console.log('TBC CART DRAFT METADATA ERROR:', metadataError.response?.status || metadataError.message);
@@ -2583,7 +2581,7 @@ Address: ${req.body.address}`,
 
       {
         headers: {
-          'X-Shopify-Access-Token': ACCESS_TOKEN,
+          'X-Shopify-Access-Token': await getEzzyAccessToken(),
           'Content-Type': 'application/json'
         }
       }
@@ -2611,7 +2609,7 @@ Address: ${req.body.address}`,
         await axios.put(
           `https://${SHOP}/admin/api/2024-01/draft_orders/${draftOrder.id}.json`,
           { draft_order: { id: draftOrder.id, tags: 'CREDO,CREDO-STATUS-PENDING', note: `${draftOrder.note}\nCredo Order Code: ${orderCode}` } },
-          { headers: { 'X-Shopify-Access-Token': ACCESS_TOKEN, 'Content-Type': 'application/json' } }
+          { headers: { 'X-Shopify-Access-Token': await getEzzyAccessToken(), 'Content-Type': 'application/json' } }
         );
       } catch (metadataError) {
         console.log('CREDO DRAFT METADATA ERROR:', metadataError.response?.status || metadataError.message);
@@ -2692,7 +2690,7 @@ Address: ${req.body.address}`,
 
       {
         headers: {
-          'X-Shopify-Access-Token': ACCESS_TOKEN,
+          'X-Shopify-Access-Token': await getEzzyAccessToken(),
           'Content-Type': 'application/json'
         }
       }
