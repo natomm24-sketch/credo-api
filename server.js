@@ -1376,7 +1376,7 @@ Address: ${req.body.address}`,
       },
       {
         headers: {
-          'X-Shopify-Access-Token': await getEzzyAccessToken()_COMFORT,
+          'X-Shopify-Access-Token': ACCESS_TOKEN_COMFORT,
           'Content-Type': 'application/json'
         }
       }
@@ -1516,7 +1516,7 @@ app.post('/api/create-order-and-bank', async (req, res) => {
       },
       {
         headers: {
-          'X-Shopify-Access-Token': await getEzzyAccessToken()_COMFORT,
+          'X-Shopify-Access-Token': ACCESS_TOKEN_COMFORT,
           'Content-Type': 'application/json'
         }
       }
@@ -1886,7 +1886,7 @@ app.post('/api/keepz-order-comfortmix', async (req, res) => {
 
         {
           headers: {
-            'X-Shopify-Access-Token': await getEzzyAccessToken()_COMFORT
+            'X-Shopify-Access-Token': ACCESS_TOKEN_COMFORT
           }
         }
 
@@ -2218,7 +2218,7 @@ Address: ${req.body.address}`,
       },
       {
         headers: {
-          'X-Shopify-Access-Token': await getEzzyAccessToken()_COMFORT,
+          'X-Shopify-Access-Token': ACCESS_TOKEN_COMFORT,
           'Content-Type': 'application/json'
         }
       }
@@ -2291,7 +2291,7 @@ Address: ${req.body.address}`,
 
       {
         headers: {
-          'X-Shopify-Access-Token': await getEzzyAccessToken()_COMFORT,
+          'X-Shopify-Access-Token': ACCESS_TOKEN_COMFORT,
           'Content-Type': 'application/json'
         }
       }
