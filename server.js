@@ -59,6 +59,7 @@ MIIJQQIBADANBgkqhkiG9w0BAQEFAASCCSswggknAgEAAoICAQCkdhJob4UQuoVTBPCjMYFrsxv9O+18
 `;
 app.use(cors({ origin: '*' }));
 app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 
 /* ===================== EZZY PRODUCT REVIEWS ===================== */
 
@@ -66,7 +67,8 @@ const reviewRateLimits = new Map();
 const reviewWriteQueues = new Map();
 const REVIEW_NAMESPACE = 'ezzy';
 const REVIEW_KEY = 'product_reviews';
-const { shop: EZZY_SHOP, getAccessToken: getEzzyAccessToken, graphql: ezzyGraphql } = require('./tracker').shopify;
+const orderTracker = require('./tracker');
+const { shop: EZZY_SHOP, getAccessToken: getEzzyAccessToken, graphql: ezzyGraphql } = orderTracker.shopify;
 
 
 function isEzzyStorefrontRequest(req) {
@@ -743,7 +745,7 @@ Address: ${req.body.address}`,
 
       'https://api.ezzy.ge/api/bog-order',
 
-      { products },
+      { products, shopOrderId: `BOG_${shopifyResponse.data.draft_order.id}` },
 
       {
         headers: {
@@ -753,16 +755,30 @@ Address: ${req.body.address}`,
 
     );
 
+    const draftOrder = shopifyResponse.data.draft_order;
+    const bogOrderId = bogResponse.data.orderId;
+    if (bogOrderId) {
+      try {
+        await axios.put(
+          `https://${SHOP}/admin/api/2024-01/draft_orders/${draftOrder.id}.json`,
+          { draft_order: { id: draftOrder.id, tags: 'BOG,BOG-STATUS-CREATED', note: `${draftOrder.note}\nBOG Order ID: ${bogOrderId}\nBOG Status: in_progress\nBOG Installment Status: unknown` } },
+          { headers: { 'X-Shopify-Access-Token': await getEzzyAccessToken(), 'Content-Type': 'application/json' } }
+        );
+      } catch (metadataError) {
+        console.log('BOG DRAFT METADATA ERROR:', metadataError.response?.status || metadataError.message);
+      }
+    }
+
     return res.json({
 
       draftOrderId:
-        shopifyResponse.data.draft_order.id,
+        draftOrder.id,
 
       redirectUrl:
         bogResponse.data.redirectUrl,
 
       orderId:
-        bogResponse.data.orderId
+        bogOrderId
 
     });
 
@@ -867,6 +883,9 @@ const cartItems = products.map(p => ({
 }));
 console.log("BOG TOKEN OK");
 console.log("ACCESS TOKEN EXISTS:", !!accessToken);
+    const shopOrderId = /^BOG_\d+$/.test(String(req.body.shopOrderId || ''))
+      ? String(req.body.shopOrderId)
+      : `BOG_${Date.now()}`;
     const checkoutResponse = await axios.post(
 
   'https://installment.bog.ge/v1/installment/checkout',
@@ -878,7 +897,7 @@ console.log("ACCESS TOKEN EXISTS:", !!accessToken);
 
     installment_type: "STANDARD",
 
-    shop_order_id: "BOG_" + Date.now(),
+    shop_order_id: shopOrderId,
 
     success_redirect_url:
       "https://ezzy.ge/pages/payment-success",
@@ -1031,6 +1050,10 @@ app.post('/api/bog-part-order', async (req, res) => {
 
     }));
 
+    const shopOrderId = /^BNPL_\d+$/.test(String(req.body.shopOrderId || ''))
+      ? String(req.body.shopOrderId)
+      : `BNPL_${Date.now()}`;
+
     const checkoutResponse = await axios.post(
 
       'https://installment.bog.ge/v1/installment/checkout',
@@ -1044,8 +1067,7 @@ app.post('/api/bog-part-order', async (req, res) => {
 
         discount_code: discountCode,
 
-        shop_order_id:
-          "BNPL_" + Date.now(),
+        shop_order_id: shopOrderId,
 
         success_redirect_url:
           "https://ezzy.ge/pages/payment-success",
@@ -1175,7 +1197,8 @@ const bogResponse = await axios.post(
   {
     products,
     month: req.body.month,
-    discount_code: req.body.discount_code
+    discount_code: req.body.discount_code,
+    shopOrderId: `BNPL_${shopifyResponse.data.draft_order.id}`
   },
 
   {
@@ -1186,16 +1209,30 @@ const bogResponse = await axios.post(
 
 );
 
+const draftOrder = shopifyResponse.data.draft_order;
+const bogOrderId = bogResponse.data.orderId;
+if (bogOrderId) {
+  try {
+    await axios.put(
+      `https://${SHOP}/admin/api/2024-01/draft_orders/${draftOrder.id}.json`,
+      { draft_order: { id: draftOrder.id, tags: 'BOG-BNPL,BOG-STATUS-CREATED', note: `${draftOrder.note}\nBOG Order ID: ${bogOrderId}\nBOG Status: in_progress\nBOG Installment Status: unknown` } },
+      { headers: { 'X-Shopify-Access-Token': await getEzzyAccessToken(), 'Content-Type': 'application/json' } }
+    );
+  } catch (metadataError) {
+    console.log('BOG BNPL DRAFT METADATA ERROR:', metadataError.response?.status || metadataError.message);
+  }
+}
+
 return res.json({
 
   draftOrderId:
-    shopifyResponse.data.draft_order.id,
+    draftOrder.id,
 
   redirectUrl:
     bogResponse.data.redirectUrl,
 
   orderId:
-    bogResponse.data.orderId
+    bogOrderId
 
 });
 
@@ -1215,6 +1252,83 @@ return res.status(500).json({
 
 }
 
+});
+
+/* ===================== BOG INSTALLMENT CALLBACK ===================== */
+
+app.post('/api/bog-installment-callback', async (req, res) => {
+  const orderId = String(req.body?.order_id || '').trim();
+  const callbackShopOrderId = String(req.body?.shop_order_id || '').trim();
+  const paymentMethod = String(req.body?.payment_method || '').trim().toUpperCase();
+
+  if (!/^[A-Za-z0-9_-]{20,100}$/.test(orderId) || (paymentMethod && paymentMethod !== 'BOG_LOAN')) {
+    return res.sendStatus(400);
+  }
+
+  try {
+    const verified = await orderTracker.statusHelpers.fetchBogStatus(orderId, {
+      bogClientId: BOG_CLIENT_ID_EZZY,
+      bogClientSecret: BOG_CLIENT_SECRET_EZZY,
+    }, { force: true, timeout: 15_000 });
+
+    if (!verified.available) {
+      console.log('BOG CALLBACK STATUS NOT READY:', verified.statusCode || 'unknown');
+      return res.sendStatus(200);
+    }
+
+    const verifiedShopOrderId = String(verified.shopOrderId || '').trim();
+    if (callbackShopOrderId && verifiedShopOrderId && callbackShopOrderId !== verifiedShopOrderId) {
+      console.log('BOG CALLBACK SHOP ORDER MISMATCH');
+      return res.sendStatus(200);
+    }
+
+    const shopOrderId = verifiedShopOrderId || callbackShopOrderId;
+    const draftId = shopOrderId.match(/^(?:BOG|BNPL)_(\d+)$/)?.[1];
+    if (!draftId) return res.sendStatus(200);
+
+    const headers = {
+      'X-Shopify-Access-Token': await getEzzyAccessToken(),
+      'Content-Type': 'application/json',
+    };
+    const draftResponse = await axios.get(
+      `https://${SHOP}/admin/api/2024-01/draft_orders/${draftId}.json`,
+      { headers }
+    );
+    const draftOrder = draftResponse.data?.draft_order;
+    if (!draftOrder) return res.sendStatus(200);
+
+    const cleanNote = String(draftOrder.note || '')
+      .replace(/\n?BOG Order ID:[^\n]*/gi, '')
+      .replace(/\n?BOG Status:[^\n]*/gi, '')
+      .replace(/\n?BOG Installment Status:[^\n]*/gi, '')
+      .trim();
+    const orderStatus = String(verified.orderStatus || 'in_progress').toLowerCase();
+    const installmentStatus = String(verified.installmentStatus || 'unknown').toLowerCase();
+    const statusTags = String(draftOrder.tags || '')
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter((tag) => tag && !/^BOG-(?:INSTALLMENT-)?STATUS-/i.test(tag));
+    statusTags.push(
+      `BOG-STATUS-${orderStatus.replace(/_/g, '-')}`.toUpperCase(),
+      `BOG-INSTALLMENT-STATUS-${installmentStatus.replace(/_/g, '-')}`.toUpperCase()
+    );
+
+    await axios.put(
+      `https://${SHOP}/admin/api/2024-01/draft_orders/${draftId}.json`,
+      {
+        draft_order: {
+          id: draftId,
+          tags: [...new Set(statusTags)].join(','),
+          note: `${cleanNote}\nBOG Order ID: ${orderId}\nBOG Status: ${orderStatus}\nBOG Installment Status: ${installmentStatus}`,
+        },
+      },
+      { headers }
+    );
+  } catch (error) {
+    console.log('BOG CALLBACK ERROR:', error.response?.status || error.message);
+  }
+
+  return res.sendStatus(200);
 });
 
 
@@ -2825,12 +2939,14 @@ Address: ${req.body.address}`,
 
 });
 
-require('./tracker')(app, {
+orderTracker(app, {
   tbcApiKey: TBC_API_KEY_COMFORT,
   tbcApiSecret: TBC_API_SECRET_COMFORT,
   tbcMerchantKey: TBC_MERCHANT_COMFORT,
   credoMerchantId: MERCHANT_ID_COMFORT,
-  credoSecret: SECRET_COMFORT
+  credoSecret: SECRET_COMFORT,
+  bogClientId: BOG_CLIENT_ID_EZZY,
+  bogClientSecret: BOG_CLIENT_SECRET_EZZY
 });
 
 app.listen(process.env.PORT || 3000);

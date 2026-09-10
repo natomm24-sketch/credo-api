@@ -202,6 +202,16 @@ const CREDO_STATUS_LABELS = {
   14: 'ბანკი ხელახლა განიხილავს',
 };
 
+const BOG_STATUS_LABELS = {
+  success: 'დამტკიცდა',
+  in_progress: 'განაცხადი მუშავდება',
+  error: 'განაცხადი ვერ დასრულდა',
+  reject: 'დაუარდა',
+  reverse_success: 'გაუქმდა',
+  fail: 'განაცხადი ვერ დასრულდა',
+  unknown: 'განაცხადი მუშავდება',
+};
+
 const CREDO_STATUS_MIN_AGE_MS = 30 * 60 * 1000;
 const CREDO_STATUS_CACHE_TTL_MS = 5 * 60 * 1000;
 const CREDO_STATUS_SYNC_LIMIT = 12;
@@ -211,6 +221,11 @@ const TBC_STATUS_CACHE_TTL_MS = 2 * 60 * 1000;
 const TBC_STATUS_SYNC_LIMIT = 12;
 const tbcStatusCache = new Map();
 const tbcAccessTokenCache = new Map();
+const BOG_STATUS_MIN_AGE_MS = 2 * 60 * 1000;
+const BOG_STATUS_CACHE_TTL_MS = 2 * 60 * 1000;
+const BOG_STATUS_SYNC_LIMIT = 12;
+const bogStatusCache = new Map();
+const bogAccessTokenCache = new Map();
 
 function detectProvider(tags, note) {
   const text = `${Array.isArray(tags) ? tags.join(' ') : tags || ''} ${note || ''}`.toLocaleUpperCase('ka-GE');
@@ -228,18 +243,131 @@ function extractApplicationMeta(tags, note, provider, fallbackStatus) {
   const sessionId = text.match(/TBC\s+Session\s+ID:\s*([0-9a-f-]{20,})/i)?.[1] || null;
   const tbcStatusMatch = text.match(/TBC(?:-|\s+)STATUS(?:\s+ID)?(?:-|:|\s)+(\d{1,2})/i);
   const credoStatusMatch = text.match(/CREDO(?:-|\s+)STATUS(?:\s+ID)?(?:-|:|\s)+(\d{1,2})/i);
+  const bogOrderId = text.match(/BOG\s+Order\s+ID:\s*([0-9a-f-]{20,})/i)?.[1] || null;
+  const bogStatusMatch = text.match(/BOG\s+Status:\s*([a-z_]+)/i);
+  const bogInstallmentStatusMatch = text.match(/BOG\s+Installment\s+Status:\s*([a-z_]+)/i);
   const tbcStatusId = tbcStatusMatch ? Number(tbcStatusMatch[1]) : null;
   const credoStatusId = credoStatusMatch ? Number(credoStatusMatch[1]) : null;
   const credoCode = text.match(/Credo\s+Order\s+Code:\s*([\w-]+)/i)?.[1] || null;
+  const bogStatusId = String(bogInstallmentStatusMatch?.[1] || bogStatusMatch?.[1] || '').toLowerCase() || null;
 
   let applicationStatus = fallbackStatus || 'განაცხადი შექმნილია';
   if (provider === 'COD') applicationStatus = 'კურიერთან გადახდა';
   if (provider === 'TBC' && tbcStatusId !== null) applicationStatus = TBC_STATUS_LABELS[tbcStatusId] || `სტატუსი ${tbcStatusId}`;
   if (provider === 'CREDO' && credoStatusId !== null) applicationStatus = CREDO_STATUS_LABELS[credoStatusId] || `Credo სტატუსი ${credoStatusId}`;
+  if ((provider === 'BOG' || provider === 'BOG_BNPL') && bogStatusId) applicationStatus = BOG_STATUS_LABELS[bogStatusId] || `BOG სტატუსი: ${bogStatusId}`;
 
-  const applicationStatusId = provider === 'CREDO' ? credoStatusId : tbcStatusId;
+  const applicationStatusId = provider === 'CREDO'
+    ? credoStatusId
+    : (provider === 'BOG' || provider === 'BOG_BNPL' ? bogStatusId : tbcStatusId);
 
-  return { applicationStatus, applicationStatusId, applicationSessionId: sessionId, applicationCode: credoCode };
+  return { applicationStatus, applicationStatusId, applicationSessionId: sessionId, applicationCode: credoCode, applicationOrderId: bogOrderId };
+}
+
+function parseBogStatusPayload(payload, httpStatus = 200) {
+  const status = String(payload?.status || '').toLowerCase();
+  const installmentStatus = String(payload?.installment_status || '').toLowerCase();
+  if (httpStatus !== 200 || !['success', 'in_progress', 'error'].includes(status)) {
+    return {
+      available: false,
+      statusCode: httpStatus,
+      error: httpStatus === 401 || httpStatus === 404
+        ? 'საქართველოს ბანკში აქტიური განაცხადი ვერ მოიძებნა.'
+        : 'საქართველოს ბანკის სტატუსი ჯერ ხელმისაწვდომი არ არის.',
+    };
+  }
+
+  const statusId = installmentStatus || status;
+  return {
+    available: true,
+    statusCode: httpStatus,
+    statusId,
+    status: BOG_STATUS_LABELS[statusId] || BOG_STATUS_LABELS[status] || `BOG სტატუსი: ${statusId}`,
+    orderStatus: status,
+    installmentStatus: installmentStatus || null,
+    shopOrderId: payload?.shop_order_id || null,
+    paymentId: payload?.ipay_payment_id || null,
+  };
+}
+
+async function getBogAccessToken(bankConfig, options = {}) {
+  const { bogClientId, bogClientSecret } = bankConfig || {};
+  if (!bogClientId || !bogClientSecret) throw new Error('საქართველოს ბანკის სტატუსის კავშირი ჯერ არ არის გამართული.');
+
+  const cached = bogAccessTokenCache.get(bogClientId);
+  if (!options.force && cached && Date.now() < cached.expiresAt - 60_000) return cached.token;
+
+  const response = await axios.post(
+    'https://oauth2.bog.ge/auth/realms/bog/protocol/openid-connect/token',
+    new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
+    {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Basic ${Buffer.from(`${bogClientId}:${bogClientSecret}`).toString('base64')}`,
+      },
+      timeout: options.timeout || 10_000,
+    },
+  );
+  const token = response.data?.access_token;
+  if (!token) throw new Error('საქართველოს ბანკის ავტორიზაციის ტოკენი ვერ მოიძებნა.');
+
+  const expiresIn = Number(response.data?.expires_in) || 3600;
+  bogAccessTokenCache.set(bogClientId, { token, expiresAt: Date.now() + expiresIn * 1000 });
+  return token;
+}
+
+async function fetchBogStatus(orderId, bankConfig, options = {}) {
+  const id = String(orderId || '').trim();
+  if (!/^[0-9a-f-]{20,}$/i.test(id)) throw new Error('საქართველოს ბანკის განაცხადის ID არასწორია.');
+
+  const cached = bogStatusCache.get(id);
+  if (!options.force && cached && Date.now() - cached.checkedAt < BOG_STATUS_CACHE_TTL_MS) {
+    return cached.result;
+  }
+
+  const token = await getBogAccessToken(bankConfig, options);
+  const response = await axios.get(
+    `https://installment.bog.ge/v1/installment/checkout/${encodeURIComponent(id)}`,
+    {
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      timeout: options.timeout || 10_000,
+      validateStatus: () => true,
+    },
+  );
+  const result = { orderId: id, ...parseBogStatusPayload(response.data || {}, response.status) };
+  bogStatusCache.set(id, { checkedAt: Date.now(), result });
+  return result;
+}
+
+function bogStatusCheckIsDue(record, now = Date.now()) {
+  if (!['BOG', 'BOG_BNPL'].includes(record?.provider) || !record.applicationOrderId) return false;
+  const createdAt = new Date(record.createdAt).getTime();
+  return Number.isFinite(createdAt) && now - createdAt >= BOG_STATUS_MIN_AGE_MS;
+}
+
+async function enrichBogStatuses(records, bankConfig) {
+  const candidates = records.filter((record) => bogStatusCheckIsDue(record)).slice(0, BOG_STATUS_SYNC_LIMIT);
+  if (!candidates.length || !bankConfig?.bogClientId || !bankConfig?.bogClientSecret) return records;
+
+  let nextIndex = 0;
+  const workerCount = Math.min(3, candidates.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < candidates.length) {
+      const record = candidates[nextIndex++];
+      try {
+        const result = await fetchBogStatus(record.applicationOrderId, bankConfig);
+        if (result.available) {
+          record.applicationStatusId = result.statusId;
+          record.applicationStatus = result.status;
+          record.applicationStatusCheckedAt = new Date().toISOString();
+        }
+      } catch (error) {
+        console.error('BOG AUTO STATUS ERROR:', error.response?.status || error.message);
+      }
+    }
+  });
+  await Promise.all(workers);
+  return records;
 }
 
 function getTbcStatusId(payload) {
@@ -553,6 +681,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
       await Promise.all([
         enrichCredoStatuses(drafts, bankConfig),
         enrichTbcStatuses(drafts, bankConfig),
+        enrichBogStatuses(drafts, bankConfig),
       ]);
 
       return res.json({ orders: [...orders, ...drafts].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 10) });
@@ -684,6 +813,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
         await Promise.all([
           enrichCredoStatuses(drafts, bankConfig),
           enrichTbcStatuses(drafts, bankConfig),
+          enrichBogStatuses(drafts, bankConfig),
         ]);
       } catch (draftError) {
         draftWarning = 'დრაფტების წაკითხვის უფლება ჯერ არ არის აქტიური.';
@@ -727,6 +857,22 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
       console.error('CREDO STATUS ERROR:', error.response?.status || error.message);
       const configurationError = error.message === 'Credo სტატუსის კავშირი ჯერ არ არის გამართული.';
       return res.status(configurationError ? 503 : 502).json({ error: configurationError ? error.message : 'Credo-ს სტატუსის მიღება ვერ მოხერხდა.' });
+    }
+  });
+
+  app.get('/api/admin/bog-status', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const orderId = String(req.query?.orderId || '').trim();
+    if (!/^[0-9a-f-]{20,}$/i.test(orderId)) return res.status(400).json({ error: 'საქართველოს ბანკის განაცხადის ID არასწორია.' });
+
+    try {
+      const result = await fetchBogStatus(orderId, bankConfig, { force: true, timeout: 15_000 });
+      if (!result.available) return res.status(result.statusCode === 401 || result.statusCode === 404 ? 404 : 502).json({ error: result.error });
+      return res.json(result);
+    } catch (error) {
+      console.error('BOG STATUS ERROR:', error.response?.status || error.message);
+      const configurationError = error.message === 'საქართველოს ბანკის სტატუსის კავშირი ჯერ არ არის გამართული.';
+      return res.status(configurationError ? 503 : 502).json({ error: configurationError ? error.message : 'საქართველოს ბანკის სტატუსის მიღება ვერ მოხერხდა.' });
     }
   });
 
@@ -803,6 +949,10 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
 // Reviews share the existing EZZY app's renewable server-side credentials.
 module.exports.shopify = { shop: SHOP, getAccessToken, graphql };
 module.exports.statusHelpers = {
+  BOG_STATUS_LABELS,
+  parseBogStatusPayload,
+  bogStatusCheckIsDue,
+  fetchBogStatus,
   TBC_STATUS_LABELS,
   parseTbcStatusPayload,
   tbcStatusCheckIsDue,
