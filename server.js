@@ -1746,7 +1746,7 @@ Keepz Amount: ${amount.toFixed(2)} GEL`,
     { name: "keepz_amount", value: amount.toFixed(2) }
   ],
 
-  tags: `KEEPZ, Keepz:${orderId}`,
+    tags: `KEEPZ, KZ:${orderId}`,
 
    use_customer_default_address: false
     }
