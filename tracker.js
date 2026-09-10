@@ -142,18 +142,29 @@ async function getAccessToken() {
 }
 
 async function graphql(query, variables) {
-  const response = await axios.post(
-    `https://${SHOP}/admin/api/2026-07/graphql.json`,
-    { query, variables },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': await getAccessToken(),
+  let response;
+  try {
+    response = await axios.post(
+      `https://${SHOP}/admin/api/2026-07/graphql.json`,
+      { query, variables },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Access-Token': await getAccessToken(),
+        },
       },
-    },
-  );
+    );
+  } catch (error) {
+    console.error('SHOPIFY GRAPHQL HTTP ERROR:', {
+      status: error.response?.status || null,
+      requestId: error.response?.headers?.['x-request-id'] || null,
+      errors: error.response?.data?.errors || null,
+    });
+    throw error;
+  }
 
   if (response.data.errors?.length) {
+    console.error('SHOPIFY GRAPHQL RESPONSE ERROR:', response.data.errors.map((error) => error.message));
     throw new Error(response.data.errors.map((error) => error.message).join('; '));
   }
   return response.data.data;
@@ -684,7 +695,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
 };
 
 // Reviews share the existing EZZY app's renewable server-side credentials.
-module.exports.shopify = { shop: SHOP, getAccessToken };
+module.exports.shopify = { shop: SHOP, getAccessToken, graphql };
 module.exports.statusHelpers = {
   CREDO_STATUS_LABELS,
   parseCredoStatusPayload,

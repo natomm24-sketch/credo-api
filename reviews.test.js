@@ -10,33 +10,24 @@ function setup() {
   const end = source.indexOf('const SHOP =', start);
   const routes = {}, fields = new Map();
   let tokens = 0, writes = 0;
-  function verify(url, options) {
-    assert.ok(url.startsWith('https://review-test.myshopify.com/admin/api/'));
-    assert.equal(options.headers['X-Shopify-Access-Token'], 'renewable-test-token');
-  }
-  const axios = {
-    async get(url, options) {
-      verify(url, options);
-      const id = url.match(/products\/(\d+)/)[1];
-      return { data: { metafields: fields.has(id) ? [fields.get(id)] : [] } };
-    },
-    async post(url, body, options) {
-      verify(url, options); writes++;
-      const id = url.match(/products\/(\d+)/)[1];
-      fields.set(id, { ...body.metafield, id: `field-${id}` });
-    },
-    async put(url, body, options) {
-      verify(url, options); writes++;
-      const id = body.metafield.id.slice(6);
-      fields.set(id, { ...fields.get(id), ...body.metafield });
+  async function graphql(query, variables) {
+    tokens++;
+    const id = String(variables.id || variables.metafields?.[0]?.ownerId || '').split('/').pop();
+    if (query.includes('ProductReviewMetafield')) {
+      return { product: { metafield: fields.get(id) || null } };
     }
-  };
+    assert.ok(query.includes('SaveProductReviews'));
+    writes++;
+    const input = variables.metafields[0];
+    fields.set(id, { id: `field-${id}`, value: input.value, type: input.type });
+    return { metafieldsSet: { metafields: [fields.get(id)], userErrors: [] } };
+  }
   vm.runInNewContext(source.slice(start, end), {
     app: { get: (p, f) => routes.GET = f, post: (p, f) => routes.POST = f },
     require: (name) => {
       assert.equal(name, './tracker');
-      return { shopify: { shop: 'review-test.myshopify.com', getAccessToken: async () => { tokens++; return 'renewable-test-token'; } } };
-    }, axios, crypto, URL, console: { error() {} }
+      return { shopify: { graphql } };
+    }, crypto, URL, console: { error() {} }
   });
   async function call(method, body = {}, origin = 'https://ezzy.ge') {
     let status = 200, data;
