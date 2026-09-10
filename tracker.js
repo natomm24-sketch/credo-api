@@ -163,6 +163,11 @@ const CREDO_STATUS_LABELS = {
   14: 'ბანკი ხელახლა განიხილავს',
 };
 
+const CREDO_STATUS_MIN_AGE_MS = 30 * 60 * 1000;
+const CREDO_STATUS_CACHE_TTL_MS = 5 * 60 * 1000;
+const CREDO_STATUS_SYNC_LIMIT = 12;
+const credoStatusCache = new Map();
+
 function detectProvider(tags, note) {
   const text = `${Array.isArray(tags) ? tags.join(' ') : tags || ''} ${note || ''}`.toLocaleUpperCase('ka-GE');
   if (text.includes('TBC')) return 'TBC';
@@ -177,21 +182,105 @@ function detectProvider(tags, note) {
 function extractApplicationMeta(tags, note, provider, fallbackStatus) {
   const text = `${Array.isArray(tags) ? tags.join('\n') : tags || ''}\n${note || ''}`;
   const sessionId = text.match(/TBC\s+Session\s+ID:\s*([0-9a-f-]{20,})/i)?.[1] || null;
-  const statusMatch = text.match(/TBC(?:-|\s+)STATUS(?:\s+ID)?(?:-|:|\s)+(\d{1,2})/i);
-  const statusId = statusMatch ? Number(statusMatch[1]) : null;
+  const tbcStatusMatch = text.match(/TBC(?:-|\s+)STATUS(?:\s+ID)?(?:-|:|\s)+(\d{1,2})/i);
+  const credoStatusMatch = text.match(/CREDO(?:-|\s+)STATUS(?:\s+ID)?(?:-|:|\s)+(\d{1,2})/i);
+  const tbcStatusId = tbcStatusMatch ? Number(tbcStatusMatch[1]) : null;
+  const credoStatusId = credoStatusMatch ? Number(credoStatusMatch[1]) : null;
   const credoCode = text.match(/Credo\s+Order\s+Code:\s*([\w-]+)/i)?.[1] || null;
 
   let applicationStatus = fallbackStatus || 'განაცხადი შექმნილია';
   if (provider === 'COD') applicationStatus = 'კურიერთან გადახდა';
-  if (provider === 'TBC' && statusId !== null) applicationStatus = TBC_STATUS_LABELS[statusId] || `სტატუსი ${statusId}`;
+  if (provider === 'TBC' && tbcStatusId !== null) applicationStatus = TBC_STATUS_LABELS[tbcStatusId] || `სტატუსი ${tbcStatusId}`;
+  if (provider === 'CREDO' && credoStatusId !== null) applicationStatus = CREDO_STATUS_LABELS[credoStatusId] || `Credo სტატუსი ${credoStatusId}`;
 
-  return { applicationStatus, applicationStatusId: statusId, applicationSessionId: sessionId, applicationCode: credoCode };
+  const applicationStatusId = provider === 'CREDO' ? credoStatusId : tbcStatusId;
+
+  return { applicationStatus, applicationStatusId, applicationSessionId: sessionId, applicationCode: credoCode };
 }
 
 function getTbcStatusId(payload) {
   const candidates = [payload?.statusId, payload?.status?.id, payload?.applicationStatusId, payload?.data?.statusId, payload?.data?.status?.id];
   const value = candidates.find((item) => Number.isInteger(Number(item)));
   return value === undefined ? null : Number(value);
+}
+
+function parseCredoStatusPayload(payload) {
+  const statusCode = Number(payload?.status);
+  const rawStatusId = payload?.data;
+  const statusId = Number(rawStatusId);
+  if (statusCode !== 200 || rawStatusId === null || rawStatusId === '' || !Number.isInteger(statusId)) {
+    return {
+      available: false,
+      statusCode,
+      error: statusCode === 404
+        ? 'Credo-ში განაცხადი ვერ მოიძებნა.'
+        : 'Credo-ს სტატუსი ჯერ ხელმისაწვდომი არ არის. განაცხადის შექმნიდან 30 წუთის შემდეგ სცადეთ.',
+    };
+  }
+
+  return {
+    available: true,
+    statusCode,
+    statusId,
+    status: CREDO_STATUS_LABELS[statusId] || `Credo სტატუსი ${statusId}`,
+    info: payload?.info || null,
+  };
+}
+
+async function fetchCredoStatus(orderCode, bankConfig, options = {}) {
+  const code = String(orderCode || '').trim();
+  if (!/^[A-Za-z0-9_-]{1,50}$/.test(code)) throw new Error('Credo განაცხადის კოდი არასწორია.');
+
+  const { credoMerchantId, credoSecret } = bankConfig || {};
+  if (!credoMerchantId || !credoSecret) throw new Error('Credo სტატუსის კავშირი ჯერ არ არის გამართული.');
+
+  const cacheKey = `${credoMerchantId}:${code}`;
+  const cached = credoStatusCache.get(cacheKey);
+  if (!options.force && cached && Date.now() - cached.checkedAt < CREDO_STATUS_CACHE_TTL_MS) {
+    return cached.result;
+  }
+
+  const hash = crypto.createHash('md5').update(`${credoMerchantId}${code}${credoSecret}`).digest('hex');
+  const response = await axios.get('https://ganvadeba.credo.ge/widget/api.php', {
+    params: { merchantId: credoMerchantId, orderCode: code, hash },
+    timeout: options.timeout || 10_000,
+    validateStatus: () => true,
+  });
+  const payload = typeof response.data === 'string' ? JSON.parse(response.data) : (response.data || {});
+  const result = { orderCode: code, ...parseCredoStatusPayload(payload) };
+  credoStatusCache.set(cacheKey, { checkedAt: Date.now(), result });
+  return result;
+}
+
+function credoStatusCheckIsDue(record, now = Date.now()) {
+  if (record?.provider !== 'CREDO' || !record.applicationCode) return false;
+  const createdAt = new Date(record.createdAt).getTime();
+  return Number.isFinite(createdAt) && now - createdAt >= CREDO_STATUS_MIN_AGE_MS;
+}
+
+async function enrichCredoStatuses(records, bankConfig) {
+  const candidates = records.filter((record) => credoStatusCheckIsDue(record)).slice(0, CREDO_STATUS_SYNC_LIMIT);
+  if (!candidates.length || !bankConfig?.credoMerchantId || !bankConfig?.credoSecret) return records;
+
+  let nextIndex = 0;
+  const workerCount = Math.min(3, candidates.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < candidates.length) {
+      const record = candidates[nextIndex++];
+      try {
+        const result = await fetchCredoStatus(record.applicationCode, bankConfig);
+        if (result.available) {
+          record.applicationStatusId = result.statusId;
+          record.applicationStatus = result.status;
+          record.applicationStatusCheckedAt = new Date().toISOString();
+        }
+      } catch (error) {
+        console.error('CREDO AUTO STATUS ERROR:', error.response?.status || error.message);
+      }
+    }
+  });
+  await Promise.all(workers);
+  return records;
 }
 
 module.exports = function registerOrderTracker(app, bankConfig = {}) {
@@ -298,7 +387,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             fulfillmentStatus: 'DRAFT',
             draftStatus: draft.status,
             provider,
-            applicationStatus: applicationMeta.applicationStatus || 'განაცხადი შექმნილია',
+            ...applicationMeta,
             total: draft.totalPriceSet?.shopMoney || null,
             items: (draft.lineItems?.nodes || []).map((item) => ({
               name: item.name,
@@ -310,6 +399,8 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             tracking: [],
           };
         });
+
+      await enrichCredoStatuses(drafts, bankConfig);
 
       return res.json({ orders: [...orders, ...drafts].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 10) });
     } catch (error) {
@@ -437,6 +528,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             fulfillments: [],
           };
         });
+        await enrichCredoStatuses(drafts, bankConfig);
       } catch (draftError) {
         draftWarning = 'დრაფტების წაკითხვის უფლება ჯერ არ არის აქტიური.';
         console.error('ADMIN DRAFT ORDERS ERROR:', draftError.response?.status || draftError.message);
@@ -482,32 +574,14 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
     const orderCode = String(req.query?.orderCode || '').trim();
     if (!/^[A-Za-z0-9_-]{1,50}$/.test(orderCode)) return res.status(400).json({ error: 'Credo განაცხადის კოდი არასწორია.' });
 
-    const { credoMerchantId, credoSecret } = bankConfig;
-    if (!credoMerchantId || !credoSecret) return res.status(503).json({ error: 'Credo სტატუსის კავშირი ჯერ არ არის გამართული.' });
-
     try {
-      const hash = crypto.createHash('md5').update(`${credoMerchantId}${orderCode}${credoSecret}`).digest('hex');
-      const response = await axios.get('https://ganvadeba.credo.ge/widget/api.php', {
-        params: { merchantId: credoMerchantId, orderCode, hash },
-        timeout: 15_000,
-        validateStatus: () => true,
-      });
-      const payload = response.data || {};
-      if (Number(payload.status) !== 200 || !Number.isInteger(Number(payload.data))) {
-        const unavailable = Number(payload.status) === 404
-          ? 'Credo-ში განაცხადი ვერ მოიძებნა.'
-          : 'Credo-ს სტატუსი ჯერ ხელმისაწვდომი არ არის. განაცხადის შექმნიდან 30 წუთის შემდეგ სცადეთ.';
-        return res.status(404).json({ error: unavailable });
-      }
-      const statusId = Number(payload.data);
-      return res.json({
-        orderCode,
-        statusId,
-        status: CREDO_STATUS_LABELS[statusId] || `Credo სტატუსი ${statusId}`,
-      });
+      const result = await fetchCredoStatus(orderCode, bankConfig, { force: true, timeout: 15_000 });
+      if (!result.available) return res.status(404).json({ error: result.error });
+      return res.json(result);
     } catch (error) {
       console.error('CREDO STATUS ERROR:', error.response?.status || error.message);
-      return res.status(502).json({ error: 'Credo-ს სტატუსის მიღება ვერ მოხერხდა.' });
+      const configurationError = error.message === 'Credo სტატუსის კავშირი ჯერ არ არის გამართული.';
+      return res.status(configurationError ? 503 : 502).json({ error: configurationError ? error.message : 'Credo-ს სტატუსის მიღება ვერ მოხერხდა.' });
     }
   });
 
@@ -583,3 +657,9 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
 
 // Reviews share the existing EZZY app's renewable server-side credentials.
 module.exports.shopify = { shop: SHOP, getAccessToken };
+module.exports.statusHelpers = {
+  CREDO_STATUS_LABELS,
+  parseCredoStatusPayload,
+  credoStatusCheckIsDue,
+  fetchCredoStatus,
+};
