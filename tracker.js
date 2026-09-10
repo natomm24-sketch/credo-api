@@ -206,6 +206,11 @@ const CREDO_STATUS_MIN_AGE_MS = 30 * 60 * 1000;
 const CREDO_STATUS_CACHE_TTL_MS = 5 * 60 * 1000;
 const CREDO_STATUS_SYNC_LIMIT = 12;
 const credoStatusCache = new Map();
+const TBC_STATUS_MIN_AGE_MS = 2 * 60 * 1000;
+const TBC_STATUS_CACHE_TTL_MS = 2 * 60 * 1000;
+const TBC_STATUS_SYNC_LIMIT = 12;
+const tbcStatusCache = new Map();
+const tbcAccessTokenCache = new Map();
 
 function detectProvider(tags, note) {
   const text = `${Array.isArray(tags) ? tags.join(' ') : tags || ''} ${note || ''}`.toLocaleUpperCase('ka-GE');
@@ -239,8 +244,114 @@ function extractApplicationMeta(tags, note, provider, fallbackStatus) {
 
 function getTbcStatusId(payload) {
   const candidates = [payload?.statusId, payload?.status?.id, payload?.applicationStatusId, payload?.data?.statusId, payload?.data?.status?.id];
-  const value = candidates.find((item) => Number.isInteger(Number(item)));
+  const value = candidates.find((item) => item !== null && item !== undefined && item !== '' && Number.isInteger(Number(item)));
   return value === undefined ? null : Number(value);
+}
+
+function parseTbcStatusPayload(payload, httpStatus = 200) {
+  const statusId = getTbcStatusId(payload);
+  if (httpStatus !== 200 || statusId === null) {
+    return {
+      available: false,
+      statusCode: httpStatus,
+      error: httpStatus === 401 || httpStatus === 404
+        ? 'TBC-ში აქტიური განაცხადი ვერ მოიძებნა.'
+        : 'TBC-ის სტატუსი ჯერ ხელმისაწვდომი არ არის.',
+    };
+  }
+
+  return {
+    available: true,
+    statusCode: httpStatus,
+    statusId,
+    status: TBC_STATUS_LABELS[statusId] || `TBC სტატუსი ${statusId}`,
+    description: payload?.description || payload?.statusDescription || null,
+    amount: payload?.amount ?? null,
+    contributionAmount: payload?.contributionAmount ?? null,
+  };
+}
+
+async function getTbcAccessToken(bankConfig, options = {}) {
+  const { tbcApiKey, tbcApiSecret } = bankConfig || {};
+  if (!tbcApiKey || !tbcApiSecret) throw new Error('TBC სტატუსის კავშირი ჯერ არ არის გამართული.');
+
+  const cached = tbcAccessTokenCache.get(tbcApiKey);
+  if (!options.force && cached && Date.now() < cached.expiresAt - 60_000) return cached.token;
+
+  const response = await axios.post(
+    'https://api.tbcbank.ge/oauth/token',
+    new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
+    {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Basic ${Buffer.from(`${tbcApiKey}:${tbcApiSecret}`).toString('base64')}`,
+      },
+      timeout: options.timeout || 10_000,
+    },
+  );
+  const token = response.data?.access_token;
+  if (!token) throw new Error('TBC ავტორიზაციის ტოკენი ვერ მოიძებნა.');
+
+  const expiresIn = Number(response.data?.expires_in) || 3600;
+  tbcAccessTokenCache.set(tbcApiKey, { token, expiresAt: Date.now() + expiresIn * 1000 });
+  return token;
+}
+
+async function fetchTbcStatus(sessionId, bankConfig, options = {}) {
+  const id = String(sessionId || '').trim();
+  if (!/^[0-9a-f-]{20,}$/i.test(id)) throw new Error('TBC განაცხადის ID არასწორია.');
+
+  const { tbcMerchantKey } = bankConfig || {};
+  if (!tbcMerchantKey) throw new Error('TBC სტატუსის კავშირი ჯერ არ არის გამართული.');
+
+  const cached = tbcStatusCache.get(id);
+  if (!options.force && cached && Date.now() - cached.checkedAt < TBC_STATUS_CACHE_TTL_MS) {
+    return cached.result;
+  }
+
+  const token = await getTbcAccessToken(bankConfig, options);
+  const response = await axios.request({
+    method: 'GET',
+    url: `https://api.tbcbank.ge/v1/online-installments/applications/${encodeURIComponent(id)}/status`,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    data: { merchantKey: tbcMerchantKey },
+    timeout: options.timeout || 10_000,
+    validateStatus: () => true,
+  });
+  const result = { sessionId: id, ...parseTbcStatusPayload(response.data || {}, response.status) };
+  tbcStatusCache.set(id, { checkedAt: Date.now(), result });
+  return result;
+}
+
+function tbcStatusCheckIsDue(record, now = Date.now()) {
+  if (record?.provider !== 'TBC' || !record.applicationSessionId) return false;
+  const createdAt = new Date(record.createdAt).getTime();
+  return Number.isFinite(createdAt) && now - createdAt >= TBC_STATUS_MIN_AGE_MS;
+}
+
+async function enrichTbcStatuses(records, bankConfig) {
+  const candidates = records.filter((record) => tbcStatusCheckIsDue(record)).slice(0, TBC_STATUS_SYNC_LIMIT);
+  if (!candidates.length || !bankConfig?.tbcApiKey || !bankConfig?.tbcApiSecret || !bankConfig?.tbcMerchantKey) return records;
+
+  let nextIndex = 0;
+  const workerCount = Math.min(3, candidates.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (nextIndex < candidates.length) {
+      const record = candidates[nextIndex++];
+      try {
+        const result = await fetchTbcStatus(record.applicationSessionId, bankConfig);
+        if (result.available) {
+          record.applicationStatusId = result.statusId;
+          record.applicationStatus = result.status;
+          record.applicationStatusCheckedAt = new Date().toISOString();
+        }
+      } catch (error) {
+        console.error('TBC AUTO STATUS ERROR:', error.response?.status || error.message);
+      }
+    }
+  });
+  await Promise.all(workers);
+  return records;
 }
 
 function parseCredoStatusPayload(payload) {
@@ -439,7 +550,10 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
           };
         });
 
-      await enrichCredoStatuses(drafts, bankConfig);
+      await Promise.all([
+        enrichCredoStatuses(drafts, bankConfig),
+        enrichTbcStatuses(drafts, bankConfig),
+      ]);
 
       return res.json({ orders: [...orders, ...drafts].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 10) });
     } catch (error) {
@@ -567,7 +681,10 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             fulfillments: [],
           };
         });
-        await enrichCredoStatuses(drafts, bankConfig);
+        await Promise.all([
+          enrichCredoStatuses(drafts, bankConfig),
+          enrichTbcStatuses(drafts, bankConfig),
+        ]);
       } catch (draftError) {
         draftWarning = 'დრაფტების წაკითხვის უფლება ჯერ არ არის აქტიური.';
         console.error('ADMIN DRAFT ORDERS ERROR:', draftError.response?.status || draftError.message);
@@ -586,25 +703,14 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
     const sessionId = String(req.query?.sessionId || '').trim();
     if (!/^[0-9a-f-]{20,}$/i.test(sessionId)) return res.status(400).json({ error: 'TBC განაცხადის ID არასწორია.' });
 
-    const { tbcApiKey, tbcApiSecret, tbcMerchantKey } = bankConfig;
-    if (!tbcApiKey || !tbcApiSecret || !tbcMerchantKey) return res.status(503).json({ error: 'TBC სტატუსის კავშირი ჯერ არ არის გამართული.' });
-
     try {
-      const tokenResponse = await axios.post(
-        'https://api.tbcbank.ge/oauth/token',
-        new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
-        { headers: { 'Content-Type': 'application/x-www-form-urlencoded', Authorization: `Basic ${Buffer.from(`${tbcApiKey}:${tbcApiSecret}`).toString('base64')}` } },
-      );
-      const response = await axios.post(
-        `https://api.tbcbank.ge/v1/online-installments/applications/${encodeURIComponent(sessionId)}/status`,
-        { merchantKey: tbcMerchantKey },
-        { headers: { Authorization: `Bearer ${tokenResponse.data.access_token}`, 'Content-Type': 'application/json' } },
-      );
-      const statusId = getTbcStatusId(response.data);
-      return res.json({ sessionId, statusId, status: statusId === null ? 'სტატუსი მიღებულია' : (TBC_STATUS_LABELS[statusId] || `სტატუსი ${statusId}`) });
+      const result = await fetchTbcStatus(sessionId, bankConfig, { force: true, timeout: 15_000 });
+      if (!result.available) return res.status(result.statusCode === 401 || result.statusCode === 404 ? 404 : 502).json({ error: result.error });
+      return res.json(result);
     } catch (error) {
       console.error('TBC STATUS ERROR:', error.response?.status || error.message);
-      return res.status(502).json({ error: 'ბანკის სტატუსის მიღება ვერ მოხერხდა.' });
+      const configurationError = error.message === 'TBC სტატუსის კავშირი ჯერ არ არის გამართული.';
+      return res.status(configurationError ? 503 : 502).json({ error: configurationError ? error.message : 'TBC-ის სტატუსის მიღება ვერ მოხერხდა.' });
     }
   });
 
@@ -697,6 +803,10 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
 // Reviews share the existing EZZY app's renewable server-side credentials.
 module.exports.shopify = { shop: SHOP, getAccessToken, graphql };
 module.exports.statusHelpers = {
+  TBC_STATUS_LABELS,
+  parseTbcStatusPayload,
+  tbcStatusCheckIsDue,
+  fetchTbcStatus,
   CREDO_STATUS_LABELS,
   parseCredoStatusPayload,
   credoStatusCheckIsDue,
