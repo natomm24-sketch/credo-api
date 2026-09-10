@@ -121,6 +121,21 @@ async function getAccessToken() {
     throw error;
   }
 
+  if (!response.data || typeof response.data !== 'object' || !response.data.access_token) {
+    console.error('SHOPIFY TOKEN INVALID RESPONSE:', {
+      status: response.status,
+      contentType: response.headers?.['content-type'] || null,
+      responseType: typeof response.data,
+      keys: response.data && typeof response.data === 'object' ? Object.keys(response.data).slice(0, 10) : [],
+    });
+    throw new Error('Shopify did not return an access token');
+  }
+
+  console.log('SHOPIFY TOKEN READY:', {
+    scope: response.data.scope || '',
+    expiresIn: Number(response.data.expires_in || 0),
+  });
+
   accessToken = response.data.access_token;
   tokenExpiresAt = Date.now() + Number(response.data.expires_in || 86399) * 1000;
   return accessToken;
