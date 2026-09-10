@@ -98,15 +98,28 @@ async function getAccessToken() {
   if (accessToken && Date.now() < tokenExpiresAt - 60_000) return accessToken;
   if (!CLIENT_ID || !CLIENT_SECRET) throw new Error('Tracker credentials are not configured');
 
-  const response = await axios.post(
-    `https://${SHOP}/admin/oauth/access_token`,
-    new URLSearchParams({
-      grant_type: 'client_credentials',
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-    }).toString(),
-    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
-  );
+  let response;
+  try {
+    response = await axios.post(
+      `https://${SHOP}/admin/oauth/access_token`,
+      new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+      }).toString(),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+    );
+  } catch (error) {
+    const responseData = error.response?.data;
+    console.error('SHOPIFY TOKEN ERROR:', {
+      status: error.response?.status || null,
+      requestId: error.response?.headers?.['x-request-id'] || null,
+      error: responseData && typeof responseData === 'object' ? responseData.error || null : null,
+      description: responseData && typeof responseData === 'object' ? responseData.error_description || null : null,
+      responseType: typeof responseData,
+    });
+    throw error;
+  }
 
   accessToken = response.data.access_token;
   tokenExpiresAt = Date.now() + Number(response.data.expires_in || 86399) * 1000;
