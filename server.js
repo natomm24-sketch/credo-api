@@ -66,6 +66,7 @@ const reviewRateLimits = new Map();
 const reviewWriteQueues = new Map();
 const REVIEW_NAMESPACE = 'ezzy';
 const REVIEW_KEY = 'product_reviews';
+const { shop: EZZY_SHOP, getAccessToken: getEzzyAccessToken, graphql: ezzyGraphql } = require('./tracker').shopify;
 
 
 function isEzzyStorefrontRequest(req) {
