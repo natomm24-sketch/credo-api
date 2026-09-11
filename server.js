@@ -1457,8 +1457,7 @@ res.json(response.data);
 });
 /* ===================== SHOPIFY + CREDO (COMFORTMIX) ===================== */
 
-const SHOP_COMFORT = "comfortmix.myshopify.com";
-const ACCESS_TOKEN_COMFORT ="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";
+const { shop: SHOP_COMFORT, getAccessToken: getComfortAccessToken } = require('./comfort-shopify');
 
 app.post('/api/create-order-and-credo-comfortmix', async (req, res) => {
   try {
@@ -1492,7 +1491,7 @@ Address: ${req.body.address}`,
       },
       {
         headers: {
-          'X-Shopify-Access-Token': ACCESS_TOKEN_COMFORT,
+          'X-Shopify-Access-Token': await getComfortAccessToken(),
           'Content-Type': 'application/json'
         }
       }
@@ -1632,7 +1631,7 @@ app.post('/api/create-order-and-bank', async (req, res) => {
       },
       {
         headers: {
-          'X-Shopify-Access-Token': ACCESS_TOKEN_COMFORT,
+          'X-Shopify-Access-Token': await getComfortAccessToken(),
           'Content-Type': 'application/json'
         }
       }
@@ -2101,7 +2100,7 @@ app.post('/api/keepz-order-comfortmix', async (req, res) => {
 
         {
           headers: {
-            'X-Shopify-Access-Token': ACCESS_TOKEN_COMFORT
+            'X-Shopify-Access-Token': await getComfortAccessToken()
           }
         }
 
@@ -2365,7 +2364,7 @@ Phone: ${savedOrder.customer.phone}`,
         headers: {
 
           'X-Shopify-Access-Token':
-            ACCESS_TOKEN_COMFORT,
+            await getComfortAccessToken(),
 
           'Content-Type':
             'application/json'
@@ -2433,7 +2432,7 @@ Address: ${req.body.address}`,
       },
       {
         headers: {
-          'X-Shopify-Access-Token': ACCESS_TOKEN_COMFORT,
+          'X-Shopify-Access-Token': await getComfortAccessToken(),
           'Content-Type': 'application/json'
         }
       }
@@ -2506,7 +2505,7 @@ Address: ${req.body.address}`,
 
       {
         headers: {
-          'X-Shopify-Access-Token': ACCESS_TOKEN_COMFORT,
+          'X-Shopify-Access-Token': await getComfortAccessToken(),
           'Content-Type': 'application/json'
         }
       }
