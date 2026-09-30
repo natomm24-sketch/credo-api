@@ -220,10 +220,13 @@ app.get("/", (req, res) => {
 
 /* ===================== BOG EZZY ===================== */
 
-const BOG_CLIENT_ID_EZZY =
+const BOG_CLIENT_ID_EZZY = process.env.BOG_CLIENT_ID_EZZY;
+const BOG_CLIENT_SECRET_EZZY = process.env.BOG_CLIENT_SECRET_EZZY;
+
+const BOG_CLIENT_ID_EZZY_LEGACY =
 "10001646";
 
-const BOG_CLIENT_SECRET_EZZY =
+const BOG_CLIENT_SECRET_EZZY_LEGACY =
 "ocoUoCrhHpbk";
 
 /* ===================== CREDO ===================== */
