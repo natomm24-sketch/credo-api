@@ -23,6 +23,16 @@ test('extracts the saved admin status and comment from draft attributes', () => 
   });
 });
 
+test('recognizes soft-deleted applications', () => {
+  assert.deepEqual(extractAdminWorkflow([
+    { key: 'ezzy_admin_status', value: 'DELETED' },
+    { key: 'ezzy_admin_comment', value: 'დუბლირებული განაცხადი' },
+  ]), {
+    adminStatus: 'DELETED',
+    adminComment: 'დუბლირებული განაცხადი',
+  });
+});
+
 test('ignores unsupported workflow statuses', () => {
   assert.deepEqual(extractAdminWorkflow([
     { key: 'ezzy_admin_status', value: 'PAID' },

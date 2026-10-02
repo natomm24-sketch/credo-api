@@ -90,7 +90,7 @@ function cleanAdminSearch(value) {
 
 const ADMIN_STATUS_ATTRIBUTE = 'ezzy_admin_status';
 const ADMIN_COMMENT_ATTRIBUTE = 'ezzy_admin_comment';
-const ADMIN_APPLICATION_STATUSES = new Set(['TAKEN', 'NO_ANSWER', 'CANCELLED']);
+const ADMIN_APPLICATION_STATUSES = new Set(['TAKEN', 'NO_ANSWER', 'CANCELLED', 'DELETED']);
 
 function extractAdminWorkflow(customAttributes) {
   const attributes = Array.isArray(customAttributes) ? customAttributes : [];
