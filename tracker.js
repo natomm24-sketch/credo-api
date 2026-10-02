@@ -88,6 +88,20 @@ function cleanAdminSearch(value) {
   return String(value || '').normalize('NFKC').trim().slice(0, 80).replace(/[^\p{L}\p{N}@.+# _-]/gu, '');
 }
 
+const ADMIN_STATUS_ATTRIBUTE = 'ezzy_admin_status';
+const ADMIN_COMMENT_ATTRIBUTE = 'ezzy_admin_comment';
+const ADMIN_APPLICATION_STATUSES = new Set(['TAKEN', 'NO_ANSWER', 'CANCELLED']);
+
+function extractAdminWorkflow(customAttributes) {
+  const attributes = Array.isArray(customAttributes) ? customAttributes : [];
+  const status = attributes.find((attribute) => attribute?.key === ADMIN_STATUS_ATTRIBUTE)?.value || '';
+  const comment = attributes.find((attribute) => attribute?.key === ADMIN_COMMENT_ATTRIBUTE)?.value || '';
+  return {
+    adminStatus: ADMIN_APPLICATION_STATUSES.has(status) ? status : '',
+    adminComment: String(comment).slice(0, 1000),
+  };
+}
+
 function assertShopifyId(value, resource) {
   const id = String(value || '');
   if (!new RegExp(`^gid:\\/\\/shopify\\/${resource}\\/\\d+$`).test(id)) throw new Error('არასწორი Shopify ID.');
@@ -715,6 +729,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
         draftOrders(first: 50, query: $search, sortKey: UPDATED_AT, reverse: true) {
           nodes {
             id name createdAt updatedAt status tags note2 email phone
+            customAttributes { key value }
             totalPriceSet { shopMoney { amount currencyCode } }
             customer { displayName firstName lastName email phone }
             shippingAddress { name firstName lastName phone city address1 }
@@ -795,6 +810,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             } : null,
             note: draft.note2 || '',
             tags: draft.tags || [],
+            ...extractAdminWorkflow(draft.customAttributes),
             provider,
             ...extractApplicationMeta(draft.tags, draft.note2, provider),
             total: draft.totalPriceSet?.shopMoney || null,
@@ -825,6 +841,46 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
     } catch (error) {
       console.error('ADMIN ORDERS ERROR:', error.response?.status || error.message);
       return res.status(503).json({ error: 'შეკვეთების ჩატვირთვა ვერ მოხერხდა.' });
+    }
+  });
+
+  app.post('/api/admin/application-workflow', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+
+    try {
+      const draftOrderId = assertShopifyId(req.body?.draftOrderId, 'DraftOrder');
+      const status = String(req.body?.status || '').trim();
+      const comment = String(req.body?.comment || '').normalize('NFKC').trim().slice(0, 1000);
+      if (!ADMIN_APPLICATION_STATUSES.has(status)) throw new Error('აირჩიეთ განაცხადის სტატუსი.');
+
+      const lookup = await graphql(`
+        query AdminDraftWorkflow($id: ID!) {
+          draftOrder(id: $id) { id customAttributes { key value } }
+        }
+      `, { id: draftOrderId });
+      if (!lookup.draftOrder) throw new Error('განაცხადი ვერ მოიძებნა.');
+
+      const customAttributes = (lookup.draftOrder.customAttributes || [])
+        .filter((attribute) => attribute?.key !== ADMIN_STATUS_ATTRIBUTE && attribute?.key !== ADMIN_COMMENT_ATTRIBUTE)
+        .map((attribute) => ({ key: attribute.key, value: attribute.value || '' }));
+      customAttributes.push({ key: ADMIN_STATUS_ATTRIBUTE, value: status });
+      if (comment) customAttributes.push({ key: ADMIN_COMMENT_ATTRIBUTE, value: comment });
+
+      const data = await graphql(`
+        mutation UpdateAdminDraftWorkflow($id: ID!, $input: DraftOrderInput!) {
+          draftOrderUpdate(id: $id, input: $input) {
+            draftOrder { id updatedAt customAttributes { key value } }
+            userErrors { field message }
+          }
+        }
+      `, { id: draftOrderId, input: { customAttributes } });
+      const userErrors = data.draftOrderUpdate?.userErrors || [];
+      if (userErrors.length) throw new Error(userErrors.map((item) => item.message).join('; '));
+
+      return res.json({ ok: true, ...extractAdminWorkflow(data.draftOrderUpdate?.draftOrder?.customAttributes) });
+    } catch (error) {
+      console.error('ADMIN APPLICATION WORKFLOW ERROR:', error.response?.status || error.message);
+      return res.status(400).json({ error: error.message || 'განაცხადის სტატუსის შენახვა ვერ მოხერხდა.' });
     }
   });
 
@@ -949,6 +1005,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
 // Reviews share the existing EZZY app's renewable server-side credentials.
 module.exports.shopify = { shop: SHOP, getAccessToken, graphql };
 module.exports.statusHelpers = {
+  extractAdminWorkflow,
   BOG_STATUS_LABELS,
   parseBogStatusPayload,
   bogStatusCheckIsDue,
