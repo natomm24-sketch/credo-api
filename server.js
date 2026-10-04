@@ -229,6 +229,83 @@ const BOG_CLIENT_ID_EZZY_LEGACY =
 const BOG_CLIENT_SECRET_EZZY_LEGACY =
 "ocoUoCrhHpbk";
 
+async function createBogCheckoutForStore({
+  products,
+  shopOrderId,
+  storefrontUrl,
+  month = 12,
+  discountCode,
+}) {
+  if (!Array.isArray(products) || !products.length) {
+    const error = new Error('No products');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const tokenResponse = await axios.post(
+    'https://oauth2.bog.ge/auth/realms/bog/protocol/openid-connect/token',
+    qs.stringify({ grant_type: 'client_credentials' }),
+    {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Basic ${Buffer.from(`${BOG_CLIENT_ID_EZZY}:${BOG_CLIENT_SECRET_EZZY}`).toString('base64')}`,
+      },
+    }
+  );
+
+  const amount = Number(products.reduce((sum, product) => {
+    const rawPrice = Number(product.price);
+    const price = rawPrice > 10000 ? rawPrice / 100 : rawPrice;
+    return sum + price * (Number(product.amount) || 1);
+  }, 0));
+
+  const cartItems = products.map((product) => ({
+    total_item_amount:
+      (Number(product.price) > 10000 ? Number(product.price) / 100 : Number(product.price))
+      * (Number(product.amount) || 1),
+    item_description: product.product_title
+      ? `${product.product_title} - ${product.title}`
+      : (product.title || 'Product'),
+    total_item_qty: Number(product.amount) || 1,
+    item_vendor_code: String(product.id),
+    product_image_url: storefrontUrl,
+    item_site_detail_url: storefrontUrl,
+  }));
+
+  const checkout = {
+    intent: 'LOAN',
+    installment_month: Number(month) || 12,
+    installment_type: 'STANDARD',
+    shop_order_id: shopOrderId,
+    success_redirect_url: `${storefrontUrl}/pages/payment-success`,
+    fail_redirect_url: `${storefrontUrl}/payment-fail`,
+    reject_redirect_url: `${storefrontUrl}/payment-fail`,
+    validate_items: true,
+    locale: 'ka',
+    purchase_units: [{ amount: { currency_code: 'GEL', value: amount } }],
+    cart_items: cartItems,
+  };
+
+  if (discountCode) checkout.discount_code = discountCode;
+
+  const checkoutResponse = await axios.post(
+    'https://installment.bog.ge/v1/installment/checkout',
+    checkout,
+    {
+      headers: {
+        Authorization: `Bearer ${tokenResponse.data.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+  const redirectLink = checkoutResponse.data.links?.find((link) => link.rel === 'target');
+
+  return {
+    redirectUrl: redirectLink?.href,
+    orderId: checkoutResponse.data.order_id,
+  };
+}
+
 /* ===================== CREDO ===================== */
 
 app.post('/api/credo-order', async (req, res) => {
@@ -1257,6 +1334,138 @@ return res.status(500).json({
 
 });
 
+/* ===================== BOG COMFORTMIX ===================== */
+
+app.post('/api/bog-order-comfortmix', async (req, res) => {
+  try {
+    const shopOrderId = /^CBOG_\d+$/.test(String(req.body.shopOrderId || ''))
+      ? String(req.body.shopOrderId)
+      : `CBOG_${Date.now()}`;
+    const checkout = await createBogCheckoutForStore({
+      products: req.body.products,
+      shopOrderId,
+      storefrontUrl: 'https://comfortmix.ge',
+    });
+    return res.json(checkout);
+  } catch (error) {
+    console.log('BOG COMFORTMIX ERROR:', error.response?.data || error.message);
+    return res.status(error.statusCode || 500).json({ error: error.response?.data || error.message });
+  }
+});
+
+app.post('/api/bog-part-order-comfortmix', async (req, res) => {
+  try {
+    const shopOrderId = /^CBNPL_\d+$/.test(String(req.body.shopOrderId || ''))
+      ? String(req.body.shopOrderId)
+      : `CBNPL_${Date.now()}`;
+    const checkout = await createBogCheckoutForStore({
+      products: req.body.products,
+      shopOrderId,
+      storefrontUrl: 'https://comfortmix.ge',
+      month: req.body.month,
+      discountCode: req.body.discount_code || 'ZERO',
+    });
+    return res.json(checkout);
+  } catch (error) {
+    console.log('BOG BNPL COMFORTMIX ERROR:', error.response?.data || error.message);
+    return res.status(error.statusCode || 500).json({ error: error.response?.data || error.message });
+  }
+});
+
+async function createComfortBogDraftOrder(req, { partByPart = false } = {}) {
+  const products = Array.isArray(req.body.products) ? req.body.products : [];
+  if (!products.length) {
+    const error = new Error('No products');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const shopifyResponse = await axios.post(
+    `https://${SHOP_COMFORT}/admin/api/2024-01/draft_orders.json`,
+    {
+      draft_order: {
+        line_items: products.map((product) => ({
+          variant_id: Number(product.id),
+          quantity: product.amount || 1,
+        })),
+        customer: { first_name: req.body.name || 'Customer' },
+        shipping_address: {
+          first_name: req.body.name || 'Customer',
+          address1: req.body.address || '',
+          phone: req.body.phone || '',
+          country: 'Georgia',
+        },
+        note: `${partByPart ? 'BOG PART BY PART' : 'BOG Installment'} (Comfortmix)\nName: ${req.body.name}\nPhone: ${req.body.phone}\nAddress: ${req.body.address}`,
+        tags: partByPart ? 'BOG-BNPL,COMFORTMIX' : 'BOG,COMFORTMIX',
+        use_customer_default_address: false,
+      },
+    },
+    {
+      headers: {
+        'X-Shopify-Access-Token': await getComfortAccessToken(),
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+
+  const draftOrder = shopifyResponse.data.draft_order;
+  const prefix = partByPart ? 'CBNPL' : 'CBOG';
+  const checkout = await createBogCheckoutForStore({
+    products,
+    shopOrderId: `${prefix}_${draftOrder.id}`,
+    storefrontUrl: 'https://comfortmix.ge',
+    month: partByPart ? req.body.month : 12,
+    discountCode: partByPart ? (req.body.discount_code || 'ZERO') : undefined,
+  });
+
+  if (checkout.orderId) {
+    try {
+      await axios.put(
+        `https://${SHOP_COMFORT}/admin/api/2024-01/draft_orders/${draftOrder.id}.json`,
+        {
+          draft_order: {
+            id: draftOrder.id,
+            tags: `${partByPart ? 'BOG-BNPL' : 'BOG'},COMFORTMIX,BOG-STATUS-CREATED`,
+            note: `${draftOrder.note}\nBOG Order ID: ${checkout.orderId}\nBOG Status: in_progress\nBOG Installment Status: unknown`,
+          },
+        },
+        {
+          headers: {
+            'X-Shopify-Access-Token': await getComfortAccessToken(),
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+    } catch (metadataError) {
+      console.log('BOG COMFORTMIX DRAFT METADATA ERROR:', metadataError.response?.status || metadataError.message);
+    }
+  }
+
+  return {
+    draftOrderId: draftOrder.id,
+    redirectUrl: checkout.redirectUrl,
+    orderId: checkout.orderId,
+  };
+}
+
+app.post('/api/create-order-and-bog-comfortmix', async (req, res) => {
+  try {
+    return res.json(await createComfortBogDraftOrder(req));
+  } catch (error) {
+    console.log('BOG COMFORTMIX DRAFT ERROR:', error.response?.data || error.message);
+    return res.status(error.statusCode || 500).json({ error: error.response?.data || error.message });
+  }
+});
+
+app.post('/api/create-order-and-bog-part-comfortmix', async (req, res) => {
+  try {
+    return res.json(await createComfortBogDraftOrder(req, { partByPart: true }));
+  } catch (error) {
+    console.log('BOG BNPL COMFORTMIX DRAFT ERROR:', error.response?.data || error.message);
+    return res.status(error.statusCode || 500).json({ error: error.response?.data || error.message });
+  }
+});
+
 /* ===================== BOG INSTALLMENT CALLBACK ===================== */
 
 app.post('/api/bog-installment-callback', async (req, res) => {
@@ -1286,15 +1495,22 @@ app.post('/api/bog-installment-callback', async (req, res) => {
     }
 
     const shopOrderId = verifiedShopOrderId || callbackShopOrderId;
-    const draftId = shopOrderId.match(/^(?:BOG|BNPL)_(\d+)$/)?.[1];
+    const shopOrderMatch = shopOrderId.match(/^(BOG|BNPL|CBOG|CBNPL)_(\d+)$/);
+    const draftId = shopOrderMatch?.[2];
     if (!draftId) return res.sendStatus(200);
 
+    const isComfortmixOrder = shopOrderMatch[1] === 'CBOG' || shopOrderMatch[1] === 'CBNPL';
+    const targetShop = isComfortmixOrder ? SHOP_COMFORT : SHOP;
+    const targetAccessToken = isComfortmixOrder
+      ? await getComfortAccessToken()
+      : await getEzzyAccessToken();
+
     const headers = {
-      'X-Shopify-Access-Token': await getEzzyAccessToken(),
+      'X-Shopify-Access-Token': targetAccessToken,
       'Content-Type': 'application/json',
     };
     const draftResponse = await axios.get(
-      `https://${SHOP}/admin/api/2024-01/draft_orders/${draftId}.json`,
+      `https://${targetShop}/admin/api/2024-01/draft_orders/${draftId}.json`,
       { headers }
     );
     const draftOrder = draftResponse.data?.draft_order;
@@ -1317,7 +1533,7 @@ app.post('/api/bog-installment-callback', async (req, res) => {
     );
 
     await axios.put(
-      `https://${SHOP}/admin/api/2024-01/draft_orders/${draftId}.json`,
+      `https://${targetShop}/admin/api/2024-01/draft_orders/${draftId}.json`,
       {
         draft_order: {
           id: draftId,
