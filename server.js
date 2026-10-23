@@ -21,6 +21,11 @@ function requiredEnv(name) {
 const MERCHANT_ID_COMFORT = requiredEnv('CREDO_MERCHANT_ID_COMFORT');
 const SECRET_COMFORT = requiredEnv('CREDO_SECRET_COMFORT');
 
+/* ===================== CREDO (EZZY / IZI COMPANY) ===================== */
+
+const MERCHANT_ID_EZZY = requiredEnv('CREDO_MERCHANT_ID_EZZY');
+const SECRET_EZZY = requiredEnv('CREDO_SECRET_EZZY');
+
 /* ===================== TBC (OLD COMPANY / COMFORTMIX) ===================== */
 
 const TBC_API_KEY_COMFORT = requiredEnv('TBC_API_KEY_COMFORT');
@@ -290,22 +295,22 @@ app.post('/api/credo-order', async (req, res) => {
     formattedProducts.forEach(p => {
       stringToHash += p.id + p.title + p.amount + p.price + "0";
     });
-    stringToHash += SECRET_COMFORT;
+    stringToHash += SECRET_EZZY;
 
     const check = crypto
       .createHash('md5')
       .update(stringToHash)
       .digest('hex');
-console.log("CREDO MERCHANT:", MERCHANT_ID_COMFORT);
+console.log("CREDO MERCHANT:", MERCHANT_ID_EZZY);
 
 console.log("CREDO REQUEST:", {
-  merchantId: MERCHANT_ID_COMFORT,
+  merchantId: MERCHANT_ID_EZZY,
   orderCode,
   products: formattedProducts
 });
     
     const data = {
-      merchantId: MERCHANT_ID_COMFORT,
+      merchantId: MERCHANT_ID_EZZY,
       orderCode: orderCode,
       check: check,
       installmentLength: 12
@@ -3127,6 +3132,8 @@ orderTracker(app, {
   tbcMerchantKey: TBC_MERCHANT_COMFORT,
   credoMerchantId: MERCHANT_ID_COMFORT,
   credoSecret: SECRET_COMFORT,
+  credoMerchantIdEzzy: MERCHANT_ID_EZZY,
+  credoSecretEzzy: SECRET_EZZY,
   bogClientId: BOG_CLIENT_ID_EZZY,
   bogClientSecret: BOG_CLIENT_SECRET_EZZY
 });
