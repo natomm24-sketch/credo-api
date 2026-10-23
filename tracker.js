@@ -552,7 +552,11 @@ function credoStatusCheckIsDue(record, now = Date.now()) {
 
 async function enrichCredoStatuses(records, bankConfig) {
   const candidates = records.filter((record) => credoStatusCheckIsDue(record)).slice(0, CREDO_STATUS_SYNC_LIMIT);
-  if (!candidates.length || !bankConfig?.credoMerchantId || !bankConfig?.credoSecret) return records;
+  const ezzyCredoConfig = {
+    credoMerchantId: bankConfig?.credoMerchantIdEzzy,
+    credoSecret: bankConfig?.credoSecretEzzy,
+  };
+  if (!candidates.length || !ezzyCredoConfig.credoMerchantId || !ezzyCredoConfig.credoSecret) return records;
 
   let nextIndex = 0;
   const workerCount = Math.min(3, candidates.length);
@@ -560,7 +564,7 @@ async function enrichCredoStatuses(records, bankConfig) {
     while (nextIndex < candidates.length) {
       const record = candidates[nextIndex++];
       try {
-        const result = await fetchCredoStatus(record.applicationCode, bankConfig);
+        const result = await fetchCredoStatus(record.applicationCode, ezzyCredoConfig);
         if (result.available) {
           record.applicationStatusId = result.statusId;
           record.applicationStatus = result.status;
@@ -906,7 +910,10 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
     if (!/^[A-Za-z0-9_-]{1,50}$/.test(orderCode)) return res.status(400).json({ error: 'Credo განაცხადის კოდი არასწორია.' });
 
     try {
-      const result = await fetchCredoStatus(orderCode, bankConfig, { force: true, timeout: 15_000 });
+      const result = await fetchCredoStatus(orderCode, {
+        credoMerchantId: bankConfig?.credoMerchantIdEzzy,
+        credoSecret: bankConfig?.credoSecretEzzy,
+      }, { force: true, timeout: 15_000 });
       if (!result.available) return res.status(404).json({ error: result.error });
       return res.json(result);
     } catch (error) {
