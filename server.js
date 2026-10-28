@@ -881,9 +881,9 @@ app.post('/api/bog-order', async (req, res) => {
           'Authorization':
             'Basic ' +
             Buffer.from(
-              BOG_CLIENT_ID_EZZY +
+              requiredEnv('BOG_INSTALLMENT_CLIENT_ID_EZZY') +
               ':' +
-              BOG_CLIENT_SECRET_EZZY
+              requiredEnv('BOG_INSTALLMENT_CLIENT_SECRET_EZZY')
             ).toString('base64')
         }
       }
