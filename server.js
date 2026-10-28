@@ -33,6 +33,13 @@ const TBC_API_SECRET_COMFORT = requiredEnv('TBC_API_SECRET_COMFORT');
 const TBC_MERCHANT_COMFORT = requiredEnv('TBC_MERCHANT_COMFORT');
 const TBC_CAMPAIGN_COMFORT = Number(process.env.TBC_CAMPAIGN_COMFORT || 529);
 
+/* ===================== TBC (EZZY / IZI COMPANY) ===================== */
+
+const TBC_API_KEY_EZZY = requiredEnv('TBC_API_KEY_EZZY');
+const TBC_API_SECRET_EZZY = requiredEnv('TBC_API_SECRET_EZZY');
+const TBC_MERCHANT_EZZY = requiredEnv('TBC_MERCHANT_EZZY');
+const TBC_CAMPAIGN_EZZY = Number(requiredEnv('TBC_CAMPAIGN_EZZY'));
+
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -438,7 +445,7 @@ app.post('/api/tbc-order', async (req, res) => {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Authorization': 'Basic ' + Buffer.from(
-  TBC_API_KEY_COMFORT + ':' + TBC_API_SECRET_COMFORT
+  TBC_API_KEY_EZZY + ':' + TBC_API_SECRET_EZZY
 ).toString('base64')
         }
       }
@@ -450,8 +457,8 @@ app.post('/api/tbc-order', async (req, res) => {
     const tbcResponse = await axios.post(
       'https://api.tbcbank.ge/v1/online-installments/applications',
       {
-        merchantKey: TBC_MERCHANT_COMFORT,
-campaignId: TBC_CAMPAIGN_COMFORT,
+        merchantKey: TBC_MERCHANT_EZZY,
+campaignId: TBC_CAMPAIGN_EZZY,
      priceTotal: Number(
   products.reduce((sum, p) => {
 
@@ -546,9 +553,9 @@ app.post('/api/tbc-order-cart', async (req, res) => {
           'Authorization':
             'Basic ' +
             Buffer.from(
-              TBC_API_KEY_COMFORT +
+              TBC_API_KEY_EZZY +
               ':' +
-              TBC_API_SECRET_COMFORT
+              TBC_API_SECRET_EZZY
             ).toString('base64')
         }
       }
@@ -574,8 +581,8 @@ app.post('/api/tbc-order-cart', async (req, res) => {
     const tbcResponse = await axios.post(
       'https://api.tbcbank.ge/v1/online-installments/applications',
       {
-        merchantKey: TBC_MERCHANT_COMFORT,
-        campaignId: TBC_CAMPAIGN_COMFORT,
+        merchantKey: TBC_MERCHANT_EZZY,
+        campaignId: TBC_CAMPAIGN_EZZY,
 
         priceTotal,
 
