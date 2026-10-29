@@ -43,7 +43,7 @@ test('automatically checks BOG and BOG BNPL applications after two minutes', () 
   assert.equal(bogStatusCheckIsDue({ provider: 'TBC', applicationOrderId: orderId, createdAt: '2026-09-10T11:00:00.000Z' }, now), false);
 });
 
-test('uses new credentials for standard BOG and old credentials for BOG BNPL', () => {
+test('uses new Ezzy company credentials for standard BOG and BOG BNPL', () => {
   const config = {
     bogClientId: 'old-client',
     bogClientSecret: 'old-secret',
@@ -55,8 +55,8 @@ test('uses new credentials for standard BOG and old credentials for BOG BNPL', (
     bogClientSecret: 'new-secret',
   });
   assert.deepEqual(bogStatusConfigForProvider('BOG_BNPL', config), {
-    bogClientId: 'old-client',
-    bogClientSecret: 'old-secret',
+    bogClientId: 'new-client',
+    bogClientSecret: 'new-secret',
   });
 });
 

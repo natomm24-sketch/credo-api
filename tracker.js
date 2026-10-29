@@ -361,7 +361,7 @@ function bogStatusCheckIsDue(record, now = Date.now()) {
 
 function bogStatusConfigForProvider(provider, bankConfig) {
   const normalizedProvider = String(provider || '').trim().toUpperCase();
-  if (normalizedProvider === 'BOG') {
+  if (normalizedProvider === 'BOG' || normalizedProvider === 'BOG_BNPL') {
     return {
       bogClientId: bankConfig?.bogInstallmentClientIdEzzy,
       bogClientSecret: bankConfig?.bogInstallmentClientSecretEzzy,
