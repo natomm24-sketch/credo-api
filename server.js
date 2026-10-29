@@ -205,6 +205,8 @@ app.get("/", (req, res) => {
 
 const BOG_CLIENT_ID_EZZY = process.env.BOG_CLIENT_ID_EZZY;
 const BOG_CLIENT_SECRET_EZZY = process.env.BOG_CLIENT_SECRET_EZZY;
+const BOG_INSTALLMENT_CLIENT_ID_EZZY = requiredEnv('BOG_INSTALLMENT_CLIENT_ID_EZZY');
+const BOG_INSTALLMENT_CLIENT_SECRET_EZZY = requiredEnv('BOG_INSTALLMENT_CLIENT_SECRET_EZZY');
 
 async function createBogCheckoutForStore({
   products,
@@ -1456,8 +1458,8 @@ app.post('/api/bog-installment-callback', async (req, res) => {
 
   try {
     const verified = await orderTracker.statusHelpers.fetchBogStatus(orderId, {
-      bogClientId: BOG_CLIENT_ID_EZZY,
-      bogClientSecret: BOG_CLIENT_SECRET_EZZY,
+      bogClientId: BOG_INSTALLMENT_CLIENT_ID_EZZY,
+      bogClientSecret: BOG_INSTALLMENT_CLIENT_SECRET_EZZY,
     }, { force: true, timeout: 15_000 });
 
     if (!verified.available) {
@@ -3142,7 +3144,9 @@ orderTracker(app, {
   credoMerchantIdEzzy: MERCHANT_ID_EZZY,
   credoSecretEzzy: SECRET_EZZY,
   bogClientId: BOG_CLIENT_ID_EZZY,
-  bogClientSecret: BOG_CLIENT_SECRET_EZZY
+  bogClientSecret: BOG_CLIENT_SECRET_EZZY,
+  bogInstallmentClientIdEzzy: BOG_INSTALLMENT_CLIENT_ID_EZZY,
+  bogInstallmentClientSecretEzzy: BOG_INSTALLMENT_CLIENT_SECRET_EZZY
 });
 
 app.listen(process.env.PORT || 3000);

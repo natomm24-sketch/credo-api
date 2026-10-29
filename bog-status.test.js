@@ -17,6 +17,7 @@ Module._load = originalLoad;
 const {
   parseBogStatusPayload,
   bogStatusCheckIsDue,
+  bogStatusConfigForProvider,
   fetchBogStatus,
 } = tracker.statusHelpers;
 
@@ -40,6 +41,23 @@ test('automatically checks BOG and BOG BNPL applications after two minutes', () 
   assert.equal(bogStatusCheckIsDue({ provider: 'BOG_BNPL', applicationOrderId: orderId, createdAt: '2026-09-10T11:57:59.000Z' }, now), true);
   assert.equal(bogStatusCheckIsDue({ provider: 'BOG', applicationOrderId: orderId, createdAt: '2026-09-10T11:58:01.000Z' }, now), false);
   assert.equal(bogStatusCheckIsDue({ provider: 'TBC', applicationOrderId: orderId, createdAt: '2026-09-10T11:00:00.000Z' }, now), false);
+});
+
+test('uses new credentials for standard BOG and old credentials for BOG BNPL', () => {
+  const config = {
+    bogClientId: 'old-client',
+    bogClientSecret: 'old-secret',
+    bogInstallmentClientIdEzzy: 'new-client',
+    bogInstallmentClientSecretEzzy: 'new-secret',
+  };
+  assert.deepEqual(bogStatusConfigForProvider('BOG', config), {
+    bogClientId: 'new-client',
+    bogClientSecret: 'new-secret',
+  });
+  assert.deepEqual(bogStatusConfigForProvider('BOG_BNPL', config), {
+    bogClientId: 'old-client',
+    bogClientSecret: 'old-secret',
+  });
 });
 
 test('authenticates, fetches and caches BOG installment status', async () => {

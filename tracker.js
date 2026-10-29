@@ -359,17 +359,33 @@ function bogStatusCheckIsDue(record, now = Date.now()) {
   return Number.isFinite(createdAt) && now - createdAt >= BOG_STATUS_MIN_AGE_MS;
 }
 
+function bogStatusConfigForProvider(provider, bankConfig) {
+  const normalizedProvider = String(provider || '').trim().toUpperCase();
+  if (normalizedProvider === 'BOG') {
+    return {
+      bogClientId: bankConfig?.bogInstallmentClientIdEzzy,
+      bogClientSecret: bankConfig?.bogInstallmentClientSecretEzzy,
+    };
+  }
+  return {
+    bogClientId: bankConfig?.bogClientId,
+    bogClientSecret: bankConfig?.bogClientSecret,
+  };
+}
+
 async function enrichBogStatuses(records, bankConfig) {
   const candidates = records.filter((record) => bogStatusCheckIsDue(record)).slice(0, BOG_STATUS_SYNC_LIMIT);
-  if (!candidates.length || !bankConfig?.bogClientId || !bankConfig?.bogClientSecret) return records;
+  if (!candidates.length) return records;
 
   let nextIndex = 0;
   const workerCount = Math.min(3, candidates.length);
   const workers = Array.from({ length: workerCount }, async () => {
     while (nextIndex < candidates.length) {
       const record = candidates[nextIndex++];
+      const statusConfig = bogStatusConfigForProvider(record.provider, bankConfig);
+      if (!statusConfig.bogClientId || !statusConfig.bogClientSecret) continue;
       try {
-        const result = await fetchBogStatus(record.applicationOrderId, bankConfig);
+        const result = await fetchBogStatus(record.applicationOrderId, statusConfig);
         if (result.available) {
           record.applicationStatusId = result.statusId;
           record.applicationStatus = result.status;
@@ -929,7 +945,23 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
     if (!/^[0-9a-f-]{20,}$/i.test(orderId)) return res.status(400).json({ error: 'საქართველოს ბანკის განაცხადის ID არასწორია.' });
 
     try {
-      const result = await fetchBogStatus(orderId, bankConfig, { force: true, timeout: 15_000 });
+      const requestedProvider = String(req.query?.provider || '').trim().toUpperCase();
+      if (requestedProvider && !['BOG', 'BOG_BNPL'].includes(requestedProvider)) {
+        return res.status(400).json({ error: 'საქართველოს ბანკის გადახდის ტიპი არასწორია.' });
+      }
+      const statusConfigs = requestedProvider
+        ? [bogStatusConfigForProvider(requestedProvider, bankConfig)]
+        : [
+            bogStatusConfigForProvider('BOG', bankConfig),
+            bogStatusConfigForProvider('BOG_BNPL', bankConfig),
+          ];
+      let result = null;
+      for (const statusConfig of statusConfigs) {
+        if (!statusConfig.bogClientId || !statusConfig.bogClientSecret) continue;
+        result = await fetchBogStatus(orderId, statusConfig, { force: true, timeout: 15_000 });
+        if (result.available || ![401, 404].includes(result.statusCode)) break;
+      }
+      if (!result) throw new Error('საქართველოს ბანკის სტატუსის კავშირი ჯერ არ არის გამართული.');
       if (!result.available) return res.status(result.statusCode === 401 || result.statusCode === 404 ? 404 : 502).json({ error: result.error });
       return res.json(result);
     } catch (error) {
@@ -1016,6 +1048,7 @@ module.exports.statusHelpers = {
   BOG_STATUS_LABELS,
   parseBogStatusPayload,
   bogStatusCheckIsDue,
+  bogStatusConfigForProvider,
   fetchBogStatus,
   TBC_STATUS_LABELS,
   parseTbcStatusPayload,
