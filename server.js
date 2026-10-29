@@ -3136,9 +3136,9 @@ Address: ${req.body.address}`,
 });
 
 orderTracker(app, {
-  tbcApiKey: TBC_API_KEY_COMFORT,
-  tbcApiSecret: TBC_API_SECRET_COMFORT,
-  tbcMerchantKey: TBC_MERCHANT_COMFORT,
+  tbcApiKey: TBC_API_KEY_EZZY,
+  tbcApiSecret: TBC_API_SECRET_EZZY,
+  tbcMerchantKey: TBC_MERCHANT_EZZY,
   credoMerchantId: MERCHANT_ID_COMFORT,
   credoSecret: SECRET_COMFORT,
   credoMerchantIdEzzy: MERCHANT_ID_EZZY,
