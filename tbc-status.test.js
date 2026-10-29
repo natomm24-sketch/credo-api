@@ -21,8 +21,8 @@ const {
 } = tracker.statusHelpers;
 
 test('maps documented TBC application statuses', () => {
-  assert.equal(parseTbcStatusPayload({ statusId: 1 }).status, 'განაცხადი მუშავდება');
-  assert.equal(parseTbcStatusPayload({ statusId: 2 }).status, 'დამტკიცდა');
+  assert.equal(parseTbcStatusPayload({ statusId: 1 }).status, 'განხილვის პროცესშია');
+  assert.equal(parseTbcStatusPayload({ statusId: 2 }).status, 'ბანკმა დაამტკიცა — კლიენტის დადასტურებას ელოდება');
   assert.equal(parseTbcStatusPayload({ statusId: 6 }).status, 'დაუარდა');
   assert.equal(parseTbcStatusPayload({ statusId: 8 }).status, 'თანხა ჩარიცხულია');
 });
