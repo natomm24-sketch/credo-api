@@ -192,6 +192,11 @@ const SHOPIFY_STORE = EZZY_SHOP;
 const SHOPIFY_CLIENT_ID = requiredEnv('SHOPIFY_CLIENT_ID');
 const SHOPIFY_CLIENT_SECRET = requiredEnv('SHOPIFY_CLIENT_SECRET');
 
+const KEEPZ_INTEGRATOR_ID_EZZY = requiredEnv('KEEPZ_INTEGRATOR_ID_EZZY');
+const KEEPZ_PUBLIC_KEY_EZZY = requiredEnv('KEEPZ_PUBLIC_KEY_EZZY');
+const KEEPZ_PRIVATE_KEY_EZZY = requiredEnv('KEEPZ_PRIVATE_KEY_EZZY');
+const KEEPZ_RECEIVER_ID_EZZY = requiredEnv('KEEPZ_RECEIVER_ID_EZZY');
+
 const KEEPZ_INTEGRATOR_ID = requiredEnv('KEEPZ_INTEGRATOR_ID');
 const KEEPZ_PUBLIC_KEY = requiredEnv('KEEPZ_PUBLIC_KEY');
 const KEEPZ_PRIVATE_KEY = requiredEnv('KEEPZ_PRIVATE_KEY');
@@ -1961,8 +1966,8 @@ console.log(
   draftOrderResponse.data.draft_order.id
 );
     const keepz = new Keepz(
-  KEEPZ_PUBLIC_KEY,
-  KEEPZ_PRIVATE_KEY
+  KEEPZ_PUBLIC_KEY_EZZY,
+  KEEPZ_PRIVATE_KEY_EZZY
 );
 
 pendingOrders[orderId] = {
@@ -1976,9 +1981,9 @@ pendingOrders[orderId] = {
     const orderData = {
       amount: amount,
       currency: "GEL",
-     integratorId: KEEPZ_INTEGRATOR_ID,
+     integratorId: KEEPZ_INTEGRATOR_ID_EZZY,
       integratorOrderId: orderId,
-      receiverId: KEEPZ_RECEIVER_ID,
+      receiverId: KEEPZ_RECEIVER_ID_EZZY,
       receiverType: "BRANCH",
       directLinkProvider: "DEFAULT",
       language: "KA",
@@ -1997,7 +2002,7 @@ pendingOrders[orderId] = {
     const response = await axios.post(
       "https://gateway.keepz.me/ecommerce-service/api/integrator/order",
       {
-        identifier: KEEPZ_INTEGRATOR_ID,
+        identifier: KEEPZ_INTEGRATOR_ID_EZZY,
         encryptedData: encrypted.encryptedData,
         encryptedKeys: encrypted.encryptedKeys,
         aes: true
@@ -2059,9 +2064,9 @@ function isUuid(value) {
 }
 
 async function verifyKeepzPayment(orderId) {
-  const keepz = new Keepz(KEEPZ_PUBLIC_KEY, KEEPZ_PRIVATE_KEY);
+  const keepz = new Keepz(KEEPZ_PUBLIC_KEY_EZZY, KEEPZ_PRIVATE_KEY_EZZY);
   const encrypted = keepz.encrypt({
-    integratorId: KEEPZ_INTEGRATOR_ID,
+    integratorId: KEEPZ_INTEGRATOR_ID_EZZY,
     integratorOrderId: orderId
   });
 
@@ -2069,7 +2074,7 @@ async function verifyKeepzPayment(orderId) {
     'https://gateway.keepz.me/ecommerce-service/api/integrator/order/status',
     {
       params: {
-        identifier: KEEPZ_INTEGRATOR_ID,
+        identifier: KEEPZ_INTEGRATOR_ID_EZZY,
         encryptedData: encrypted.encryptedData,
         encryptedKeys: encrypted.encryptedKeys,
         aes: true
@@ -2175,8 +2180,8 @@ app.post('/api/keepz-callback', async (req, res) => {
 
     if (
       !isUuid(integratorOrderId)
-      || integratorId !== KEEPZ_INTEGRATOR_ID
-      || receiverId !== KEEPZ_RECEIVER_ID
+      || integratorId !== KEEPZ_INTEGRATOR_ID_EZZY
+      || receiverId !== KEEPZ_RECEIVER_ID_EZZY
       || (initialCurrency && initialCurrency !== 'GEL')
     ) {
       return res.sendStatus(400);
