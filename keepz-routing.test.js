@@ -63,3 +63,4 @@ test('payment credentials are loaded from the environment', () => {
 
   assert.doesNotMatch(source, /const\s+KEEPZ_PRIVATE_KEY(?:_EZZY)?\s*=\s*["'`]/);
 });
+
