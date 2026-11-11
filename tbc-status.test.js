@@ -31,16 +31,17 @@ test('maps documented TBC application statuses', () => {
 test('shows partial TBC financing and client contribution in the order status', () => {
   const result = parseTbcStatusPayload({
     statusId: 2,
-    amount: 130,
+    amount: 227,
     contributionAmount: 97,
   });
 
-  assert.equal(result.status, 'დამტკიცდა თანამონაწილეობით — ბანკი 130₾; კლიენტის თანამონაწილეობა 97₾');
-  assert.equal(result.amount, 130);
+  assert.equal(result.status, 'დამტკიცდა თანამონაწილეობით — სრული თანხა 227₾; ბანკი 130₾; კლიენტის თანამონაწილეობა 97₾');
+  assert.equal(result.amount, 227);
+  assert.equal(result.financedAmount, 130);
   assert.equal(result.contributionAmount, 97);
   assert.equal(
-    formatTbcApplicationStatus(5, '130.50', '96.50'),
-    'თანამონაწილეობით დამტკიცდა — ბანკი 130.50₾; კლიენტის თანამონაწილეობა 96.50₾; მერჩანტის დასტურს ელოდება',
+    formatTbcApplicationStatus(5, '227.00', '96.50'),
+    'თანამონაწილეობით დამტკიცდა — სრული თანხა 227₾; ბანკი 130.50₾; კლიენტის თანამონაწილეობა 96.50₾; მერჩანტის დასტურს ელოდება',
   );
 });
 
