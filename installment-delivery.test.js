@@ -3,11 +3,13 @@ const test = require('node:test');
 
 const {
   deliveryDetails,
+  deliveryDetailsFromTags,
   deliveryNote,
   deliveryTag,
   draftShippingLine,
   normalizeDeliveryZone,
   productsWithDelivery,
+  totalWithDeliveryFallback,
 } = require('./installment-delivery');
 
 test('maps Tbilisi and region to server-owned delivery fees', () => {
@@ -61,3 +63,33 @@ test('rejects unknown delivery zones instead of trusting a client fee', () => {
   );
 });
 
+
+
+test('keeps Shopify total when its shipping total is already present', () => {
+  const total = { amount: '157.00', currencyCode: 'GEL' };
+  assert.equal(
+    totalWithDeliveryFallback(
+      total,
+      { amount: '8.00', currencyCode: 'GEL' },
+      ['BOG', 'DELIVERY-INCLUDED-TBILISI'],
+    ),
+    total,
+  );
+});
+
+test('adds the tagged delivery fee to the tracker total only when Shopify shipping is missing', () => {
+  assert.deepEqual(
+    totalWithDeliveryFallback(
+      { amount: '219.00', currencyCode: 'GEL' },
+      { amount: '0.00', currencyCode: 'GEL' },
+      ['TBC', 'DELIVERY-INCLUDED-REGION'],
+    ),
+    { amount: '230.00', currencyCode: 'GEL' },
+  );
+  assert.equal(deliveryDetailsFromTags(['DELIVERY-INCLUDED-REGION']).fee, 11);
+});
+
+test('does not change legacy orders that were never charged delivery by the bank', () => {
+  const total = { amount: '219.00', currencyCode: 'GEL' };
+  assert.equal(totalWithDeliveryFallback(total, null, ['TBC']), total);
+});
