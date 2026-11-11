@@ -6,6 +6,13 @@ const qs = require('qs');
 const Keepz = require('./keepz');
 const { v4: uuidv4 } = require('uuid');
 const { sendMetaPurchase } = require('./meta-capi');
+const {
+  deliveryNote,
+  deliveryTag,
+  draftShippingLine,
+  normalizeDeliveryZone,
+  productsWithDelivery,
+} = require('./installment-delivery');
 
 const app = express();
 const pendingOrders = {};
@@ -14,6 +21,17 @@ function requiredEnv(name) {
   const value = String(process.env[name] || '').trim();
   if (!value) throw new Error(`Missing required environment variable: ${name}`);
   return value;
+}
+
+function draftDeliveryFields(value) {
+  const shippingLine = draftShippingLine(value);
+  return shippingLine ? { shipping_line: shippingLine } : {};
+}
+
+function installmentDeliveryError(res, error) {
+  if (error?.code !== 'INVALID_DELIVERY_ZONE') return false;
+  res.status(400).json({ error: 'Invalid delivery zone' });
+  return true;
 }
 
 /* ===================== CREDO (OLD COMPANY / COMFORTMIX) ===================== */
@@ -294,7 +312,7 @@ async function createBogCheckoutForStore({
 
 app.post('/api/credo-order', async (req, res) => {
   try {
-    const products = Array.isArray(req.body.products) ? req.body.products : [];
+    const products = productsWithDelivery(req.body.products, req.body.delivery_zone);
     const orderCode = 'ORD_' + Date.now();
 
     const formattedProducts = products.map(p => ({
@@ -366,6 +384,7 @@ console.log("CREDO REQUEST:", {
     });
 
   } catch (err) {
+    if (installmentDeliveryError(res, err)) return;
     return res.status(500).json({
       error: err.response?.data || err.message
     });
@@ -438,7 +457,7 @@ app.post('/api/tbc-order', async (req, res) => {
      console.log("FULL BODY:", req.body);
     console.log("PRODUCTS FROM FRONT:", req.body.products);
     
-    const products = Array.isArray(req.body.products) ? req.body.products : [];
+    const products = productsWithDelivery(req.body.products, req.body.delivery_zone);
 
     if (products.length === 0) {
       return res.status(400).json({ error: "No products" });
@@ -527,6 +546,7 @@ products: products.map(p => ({
 
   } catch (err) {
     console.log("TBC ERROR:", err.response?.data || err.message);
+    if (installmentDeliveryError(res, err)) return;
     return res.status(500).json({
       error: err.response?.data || err.message
     });
@@ -539,9 +559,7 @@ app.post('/api/tbc-order-cart', async (req, res) => {
 
     console.log("CART PRODUCTS:", req.body.products);
 
-    const products = Array.isArray(req.body.products)
-      ? req.body.products
-      : [];
+    const products = productsWithDelivery(req.body.products, req.body.delivery_zone);
 
     if (!products.length) {
       return res.status(400).json({
@@ -665,6 +683,8 @@ app.post('/api/tbc-order-cart', async (req, res) => {
       err.response?.data || err.message
     );
 
+    if (installmentDeliveryError(res, err)) return;
+
     return res.status(500).json({
 
       error:
@@ -760,6 +780,8 @@ app.post('/api/create-order-and-bog-ezzy', async (req, res) => {
   try {
 
     const products = req.body.products || [];
+    const deliveryZone = normalizeDeliveryZone(req.body.delivery_zone);
+    const orderDeliveryTag = deliveryTag(deliveryZone);
 
     const shopifyResponse = await axios.post(
 
@@ -787,9 +809,12 @@ app.post('/api/create-order-and-bog-ezzy', async (req, res) => {
           note: `BOG Installment
 Name: ${req.body.name}
 Phone: ${req.body.phone}
-Address: ${req.body.address}`,
+Address: ${req.body.address}
+${deliveryNote(deliveryZone)}`,
 
-          tags: "BOG",
+          tags: `BOG,${orderDeliveryTag}`,
+
+          ...draftDeliveryFields(deliveryZone),
 
           use_customer_default_address: false
 
@@ -809,7 +834,11 @@ Address: ${req.body.address}`,
 
       'https://api.ezzy.ge/api/bog-order',
 
-      { products, shopOrderId: `BOG_${shopifyResponse.data.draft_order.id}` },
+      {
+        products,
+        delivery_zone: deliveryZone,
+        shopOrderId: `BOG_${shopifyResponse.data.draft_order.id}`
+      },
 
       {
         headers: {
@@ -825,7 +854,7 @@ Address: ${req.body.address}`,
       try {
         await axios.put(
           `https://${SHOP}/admin/api/2024-01/draft_orders/${draftOrder.id}.json`,
-          { draft_order: { id: draftOrder.id, tags: 'BOG,BOG-STATUS-CREATED', note: `${draftOrder.note}\nBOG Order ID: ${bogOrderId}\nBOG Status: in_progress\nBOG Installment Status: unknown` } },
+          { draft_order: { id: draftOrder.id, tags: `BOG,BOG-STATUS-CREATED,${orderDeliveryTag}`, note: `${draftOrder.note}\nBOG Order ID: ${bogOrderId}\nBOG Status: in_progress\nBOG Installment Status: unknown` } },
           { headers: { 'X-Shopify-Access-Token': await getEzzyAccessToken(), 'Content-Type': 'application/json' } }
         );
       } catch (metadataError) {
@@ -853,6 +882,8 @@ Address: ${req.body.address}`,
       err.response?.data || err.message
     );
 
+    if (installmentDeliveryError(res, err)) return;
+
     return res.status(500).json({
 
       error:
@@ -869,9 +900,7 @@ app.post('/api/bog-order', async (req, res) => {
 
   try {
 
-    const products = Array.isArray(req.body.products)
-      ? req.body.products
-      : [];
+    const products = productsWithDelivery(req.body.products, req.body.delivery_zone);
 
     if (!products.length) {
       return res.status(400).json({
@@ -1018,6 +1047,8 @@ return res.json({
       err.response?.data || err.message
     );
 
+    if (installmentDeliveryError(res, err)) return;
+
     return res.status(500).json({
       error:
         err.response?.data || err.message
@@ -1032,9 +1063,7 @@ app.post('/api/bog-part-order', async (req, res) => {
 
   try {
 
-    const products = Array.isArray(req.body.products)
-      ? req.body.products
-      : [];
+    const products = productsWithDelivery(req.body.products, req.body.delivery_zone);
 
     const month =
       Number(req.body.month) || 4;
@@ -1192,6 +1221,8 @@ app.post('/api/bog-part-order', async (req, res) => {
       err.response?.data || err.message
     );
 
+    if (installmentDeliveryError(res, err)) return;
+
     return res.status(500).json({
 
       error:
@@ -1208,6 +1239,8 @@ app.post('/api/create-order-and-bog-part-ezzy', async (req, res) => {
 
 try {
 const products = req.body.products || [];
+const deliveryZone = normalizeDeliveryZone(req.body.delivery_zone);
+const orderDeliveryTag = deliveryTag(deliveryZone);
 
 const shopifyResponse = await axios.post(
 
@@ -1236,9 +1269,12 @@ const shopifyResponse = await axios.post(
 
 Name: ${req.body.name}
 Phone: ${req.body.phone}
-Address: ${req.body.address}`,
+Address: ${req.body.address}
+${deliveryNote(deliveryZone)}`,
 
-      tags: "BOG-BNPL",
+      tags: `BOG-BNPL,${orderDeliveryTag}`,
+
+      ...draftDeliveryFields(deliveryZone),
 
       use_customer_default_address: false
 
@@ -1260,6 +1296,7 @@ const bogResponse = await axios.post(
 
   {
     products,
+    delivery_zone: deliveryZone,
     month: req.body.month,
     discount_code: req.body.discount_code,
     shopOrderId: `BNPL_${shopifyResponse.data.draft_order.id}`
@@ -1279,7 +1316,7 @@ if (bogOrderId) {
   try {
     await axios.put(
       `https://${SHOP}/admin/api/2024-01/draft_orders/${draftOrder.id}.json`,
-      { draft_order: { id: draftOrder.id, tags: 'BOG-BNPL,BOG-STATUS-CREATED', note: `${draftOrder.note}\nBOG Order ID: ${bogOrderId}\nBOG Status: in_progress\nBOG Installment Status: unknown` } },
+      { draft_order: { id: draftOrder.id, tags: `BOG-BNPL,BOG-STATUS-CREATED,${orderDeliveryTag}`, note: `${draftOrder.note}\nBOG Order ID: ${bogOrderId}\nBOG Status: in_progress\nBOG Installment Status: unknown` } },
       { headers: { 'X-Shopify-Access-Token': await getEzzyAccessToken(), 'Content-Type': 'application/json' } }
     );
   } catch (metadataError) {
@@ -1306,6 +1343,8 @@ console.log(
   "BOG BNPL EZZY ERROR:",
   err.response?.data || err.message
 );
+
+if (installmentDeliveryError(res, err)) return;
 
 return res.status(500).json({
 
@@ -1643,8 +1682,8 @@ app.get('/auth/callback', async (req, res) => {
     const response = await axios.post(
       `https://${shop}/admin/oauth/access_token`,
       {
-        client_id: '3f09333ae04b00e338137653ea48a8e2',
-        client_secret: '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',
+        client_id: SHOPIFY_CLIENT_ID,
+        client_secret: SHOPIFY_CLIENT_SECRET,
         code: code
       }
     );
@@ -2735,6 +2774,8 @@ app.post('/api/create-order-and-tbc-ezzy', async (req, res) => {
   try {
 
     const products = req.body.products || [];
+    const deliveryZone = normalizeDeliveryZone(req.body.delivery_zone);
+    const orderDeliveryTag = deliveryTag(deliveryZone);
 
     // Shopify draft order
     const shopifyResponse = await axios.post(
@@ -2763,9 +2804,12 @@ app.post('/api/create-order-and-tbc-ezzy', async (req, res) => {
           note: `TBC Installment
 Name: ${req.body.name}
 Phone: ${req.body.phone}
-Address: ${req.body.address}`,
+Address: ${req.body.address}
+${deliveryNote(deliveryZone)}`,
 
-          tags: "TBC",
+          tags: `TBC,${orderDeliveryTag}`,
+
+          ...draftDeliveryFields(deliveryZone),
 
           use_customer_default_address: false
 
@@ -2786,7 +2830,7 @@ Address: ${req.body.address}`,
 
       'https://api.ezzy.ge/api/tbc-order',
 
-      { products },
+      { products, delivery_zone: deliveryZone },
 
       {
         headers: {
@@ -2802,7 +2846,7 @@ Address: ${req.body.address}`,
       try {
         await axios.put(
           `https://${SHOP}/admin/api/2024-01/draft_orders/${draftOrder.id}.json`,
-          { draft_order: { id: draftOrder.id, tags: 'TBC,TBC-STATUS-0', note: `${draftOrder.note}\nTBC Session ID: ${sessionId}\nTBC Status: 0` } },
+          { draft_order: { id: draftOrder.id, tags: `TBC,TBC-STATUS-0,${orderDeliveryTag}`, note: `${draftOrder.note}\nTBC Session ID: ${sessionId}\nTBC Status: 0` } },
           { headers: { 'X-Shopify-Access-Token': await getEzzyAccessToken(), 'Content-Type': 'application/json' } }
         );
       } catch (metadataError) {
@@ -2829,6 +2873,8 @@ Address: ${req.body.address}`,
       err.response?.data || err.message
     );
 
+    if (installmentDeliveryError(res, err)) return;
+
     return res.status(500).json({
 
       error:
@@ -2846,6 +2892,8 @@ app.post('/api/create-order-and-tbc-cart-ezzy', async (req, res) => {
   try {
 
     const products = req.body.products || [];
+    const deliveryZone = normalizeDeliveryZone(req.body.delivery_zone);
+    const orderDeliveryTag = deliveryTag(deliveryZone);
 
     // Shopify Draft Order
     const shopifyResponse = await axios.post(
@@ -2874,9 +2922,12 @@ app.post('/api/create-order-and-tbc-cart-ezzy', async (req, res) => {
           note: `TBC CART
 Name: ${req.body.name}
 Phone: ${req.body.phone}
-Address: ${req.body.address}`,
+Address: ${req.body.address}
+${deliveryNote(deliveryZone)}`,
 
-          tags: "TBC,CART",
+          tags: `TBC,CART,${orderDeliveryTag}`,
+
+          ...draftDeliveryFields(deliveryZone),
 
           use_customer_default_address: false
 
@@ -2897,7 +2948,7 @@ Address: ${req.body.address}`,
 
       'https://api.ezzy.ge/api/tbc-order-cart',
 
-      { products },
+      { products, delivery_zone: deliveryZone },
 
       {
         headers: {
@@ -2913,7 +2964,7 @@ Address: ${req.body.address}`,
       try {
         await axios.put(
           `https://${SHOP}/admin/api/2024-01/draft_orders/${draftOrder.id}.json`,
-          { draft_order: { id: draftOrder.id, tags: 'TBC,CART,TBC-STATUS-0', note: `${draftOrder.note}\nTBC Session ID: ${sessionId}\nTBC Status: 0` } },
+          { draft_order: { id: draftOrder.id, tags: `TBC,CART,TBC-STATUS-0,${orderDeliveryTag}`, note: `${draftOrder.note}\nTBC Session ID: ${sessionId}\nTBC Status: 0` } },
           { headers: { 'X-Shopify-Access-Token': await getEzzyAccessToken(), 'Content-Type': 'application/json' } }
         );
       } catch (metadataError) {
@@ -2941,6 +2992,8 @@ Address: ${req.body.address}`,
       err.response?.data || err.message
     );
 
+    if (installmentDeliveryError(res, err)) return;
+
     return res.status(500).json({
 
       error:
@@ -2958,6 +3011,8 @@ app.post('/api/create-order-and-credo-ezzy', async (req, res) => {
   try {
 
     const products = req.body.products || [];
+    const deliveryZone = normalizeDeliveryZone(req.body.delivery_zone);
+    const orderDeliveryTag = deliveryTag(deliveryZone);
 
     // Shopify draft order
     const shopifyResponse = await axios.post(
@@ -2986,9 +3041,12 @@ app.post('/api/create-order-and-credo-ezzy', async (req, res) => {
           note: `Credo Installment
 Name: ${req.body.name}
 Phone: ${req.body.phone}
-Address: ${req.body.address}`,
+Address: ${req.body.address}
+${deliveryNote(deliveryZone)}`,
 
-          tags: "CREDO",
+          tags: `CREDO,${orderDeliveryTag}`,
+
+          ...draftDeliveryFields(deliveryZone),
 
           use_customer_default_address: false
 
@@ -3008,7 +3066,7 @@ Address: ${req.body.address}`,
     const credoResponse = await axios.post(
   'https://api.ezzy.ge/api/credo-order',
 
-      { products },
+      { products, delivery_zone: deliveryZone },
 
       {
         headers: {
@@ -3024,7 +3082,7 @@ Address: ${req.body.address}`,
       try {
         await axios.put(
           `https://${SHOP}/admin/api/2024-01/draft_orders/${draftOrder.id}.json`,
-          { draft_order: { id: draftOrder.id, tags: 'CREDO,CREDO-STATUS-PENDING', note: `${draftOrder.note}\nCredo Order Code: ${orderCode}` } },
+          { draft_order: { id: draftOrder.id, tags: `CREDO,CREDO-STATUS-PENDING,${orderDeliveryTag}`, note: `${draftOrder.note}\nCredo Order Code: ${orderCode}` } },
           { headers: { 'X-Shopify-Access-Token': await getEzzyAccessToken(), 'Content-Type': 'application/json' } }
         );
       } catch (metadataError) {
@@ -3050,6 +3108,8 @@ Address: ${req.body.address}`,
       "EZZY CREDO ERROR:",
       err.response?.data || err.message
     );
+
+    if (installmentDeliveryError(res, err)) return;
 
     return res.status(500).json({
 
@@ -3155,4 +3215,5 @@ orderTracker(app, {
 });
 
 app.listen(process.env.PORT || 3000);
+
 
