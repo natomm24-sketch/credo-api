@@ -16,6 +16,7 @@ Module._load = originalLoad;
 
 const {
   parseBogStatusPayload,
+  resolveBogStatusId,
   bogStatusCheckIsDue,
   bogStatusConfigForProvider,
   fetchBogStatus,
@@ -27,6 +28,13 @@ test('maps documented BOG installment statuses', () => {
   assert.equal(parseBogStatusPayload({ status: 'error', installment_status: 'reject' }).status, 'დაუარდა');
   assert.equal(parseBogStatusPayload({ status: 'error', installment_status: 'reverse_success' }).status, 'გაუქმდა');
   assert.equal(parseBogStatusPayload({ status: 'error', installment_status: 'fail' }).status, 'განაცხადი ვერ დასრულდა');
+});
+
+test('uses the top-level BOG order status when fields are temporarily inconsistent', () => {
+  assert.equal(resolveBogStatusId('success', 'unknown'), 'success');
+  assert.equal(resolveBogStatusId('error', 'unknown'), 'error');
+  assert.equal(parseBogStatusPayload({ status: 'success', installment_status: 'unknown' }).status, 'დამტკიცდა');
+  assert.equal(parseBogStatusPayload({ status: 'error', installment_status: 'unknown' }).status, 'განაცხადი ვერ დასრულდა');
 });
 
 test('handles unavailable BOG status responses', () => {
@@ -89,6 +97,41 @@ test('authenticates, fetches and caches BOG installment status', async () => {
     assert.deepEqual(second, first);
     assert.equal(tokenCalls, 1);
     assert.equal(statusCalls, 1);
+  } finally {
+    axios.post = originalPost;
+    axios.get = originalGet;
+  }
+});
+
+
+test('refreshes an expired BOG token once after a 401 response', async () => {
+  const originalPost = axios.post;
+  const originalGet = axios.get;
+  const config = { bogClientId: `retry-client-${Date.now()}`, bogClientSecret: 'secret-test' };
+  const orderId = 'ORDER_Z9Y8X7W6V5U4T3S2R1';
+  let tokenCalls = 0;
+  let statusCalls = 0;
+
+  axios.post = async () => {
+    tokenCalls += 1;
+    return { data: { access_token: `token-${tokenCalls}`, expires_in: 3600 } };
+  };
+  axios.get = async (url, options) => {
+    statusCalls += 1;
+    assert.equal(url, `https://installment.bog.ge/v1/installment/checkout/${orderId}`);
+    if (statusCalls === 1) {
+      assert.equal(options.headers.Authorization, 'Bearer token-1');
+      return { status: 401, data: {} };
+    }
+    assert.equal(options.headers.Authorization, 'Bearer token-2');
+    return { status: 200, data: { status: 'success', installment_status: 'success' } };
+  };
+
+  try {
+    const result = await fetchBogStatus(orderId, config, { force: true });
+    assert.equal(result.status, 'დამტკიცდა');
+    assert.equal(tokenCalls, 2);
+    assert.equal(statusCalls, 2);
   } finally {
     axios.post = originalPost;
     axios.get = originalGet;
