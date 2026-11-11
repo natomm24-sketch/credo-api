@@ -96,13 +96,42 @@ function deliveryTag(value) {
   return delivery ? delivery.tag : 'DELIVERY-COD-LEGACY';
 }
 
+function deliveryDetailsFromTags(tags) {
+  const normalizedTags = Array.isArray(tags)
+    ? tags.map((tag) => String(tag).trim().toUpperCase())
+    : String(tags || '').split(',').map((tag) => tag.trim().toUpperCase());
+
+  return Object.values(DELIVERY_ZONES).find(
+    (delivery) => normalizedTags.includes(delivery.tag.toUpperCase()),
+  ) || null;
+}
+
+function totalWithDeliveryFallback(total, shippingTotal, tags) {
+  const delivery = deliveryDetailsFromTags(tags);
+  const totalAmount = Number(total?.amount);
+  const shippingAmount = Number(shippingTotal?.amount);
+
+  if (!delivery || !Number.isFinite(totalAmount)) return total || null;
+
+  // Shopify documents totalPriceSet as shipping-inclusive. Only add our
+  // server-owned fee if Shopify reports no shipping total for a tagged order.
+  if (Number.isFinite(shippingAmount) && shippingAmount > 0) return total;
+
+  return {
+    ...total,
+    amount: (totalAmount + delivery.fee).toFixed(2),
+  };
+}
+
 module.exports = {
   DELIVERY_ZONES,
   deliveryDetails,
+  deliveryDetailsFromTags,
   deliveryNote,
   deliveryTag,
   draftShippingLine,
   normalizeDeliveryZone,
   productsWithDelivery,
+  totalWithDeliveryFallback,
 };
 
