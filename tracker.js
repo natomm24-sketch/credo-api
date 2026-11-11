@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { totalWithDeliveryFallback } = require('./installment-delivery');
 const crypto = require('crypto');
 
 const SHOP = process.env.SHOPIFY_TRACKER_SHOP || 'x8hxwv-pn.myshopify.com';
@@ -735,6 +736,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             id name createdAt displayFinancialStatus displayFulfillmentStatus
             email phone note tags
             totalPriceSet { shopMoney { amount currencyCode } }
+            totalShippingPriceSet { shopMoney { amount currencyCode } }
             customer { displayName firstName lastName email phone }
             shippingAddress { name firstName lastName phone city address1 }
             lineItems(first: 50) { nodes { id name quantity variantTitle image { url altText } variant { product { handle onlineStoreUrl } } } }
@@ -751,6 +753,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             id name createdAt updatedAt status tags note2 email phone
             customAttributes { key value }
             totalPriceSet { shopMoney { amount currencyCode } }
+            totalShippingPriceSet { shopMoney { amount currencyCode } }
             customer { displayName firstName lastName email phone }
             shippingAddress { name firstName lastName phone city address1 }
             lineItems(first: 50) { nodes { id name quantity variantTitle image { url altText } variant { product { handle onlineStoreUrl } } } }
@@ -784,7 +787,11 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
         tags: order.tags || [],
         provider,
         ...extractApplicationMeta(order.tags, order.note, provider, ''),
-        total: order.totalPriceSet?.shopMoney || null,
+        total: totalWithDeliveryFallback(
+          order.totalPriceSet?.shopMoney,
+          order.totalShippingPriceSet?.shopMoney,
+          order.tags,
+        ),
         items: (order.lineItems?.nodes || []).map((item) => ({
           id: item.id,
           name: item.name,
@@ -833,7 +840,11 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             ...extractAdminWorkflow(draft.customAttributes),
             provider,
             ...extractApplicationMeta(draft.tags, draft.note2, provider),
-            total: draft.totalPriceSet?.shopMoney || null,
+            total: totalWithDeliveryFallback(
+              draft.totalPriceSet?.shopMoney,
+              draft.totalShippingPriceSet?.shopMoney,
+              draft.tags,
+            ),
             items: (draft.lineItems?.nodes || []).map((item) => ({
               id: item.id,
               name: item.name,
