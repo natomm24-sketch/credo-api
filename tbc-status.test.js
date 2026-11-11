@@ -15,6 +15,7 @@ const tracker = require('./tracker');
 Module._load = originalLoad;
 
 const {
+  formatTbcApplicationStatus,
   parseTbcStatusPayload,
   tbcStatusCheckIsDue,
   fetchTbcStatus,
@@ -25,6 +26,33 @@ test('maps documented TBC application statuses', () => {
   assert.equal(parseTbcStatusPayload({ statusId: 2 }).status, 'ბანკმა დაამტკიცა — კლიენტის დადასტურებას ელოდება');
   assert.equal(parseTbcStatusPayload({ statusId: 6 }).status, 'დაუარდა');
   assert.equal(parseTbcStatusPayload({ statusId: 8 }).status, 'თანხა ჩარიცხულია');
+});
+
+test('shows partial TBC financing and client contribution in the order status', () => {
+  const result = parseTbcStatusPayload({
+    statusId: 2,
+    amount: 130,
+    contributionAmount: 97,
+  });
+
+  assert.equal(result.status, 'დამტკიცდა თანამონაწილეობით — ბანკი 130₾; კლიენტის თანამონაწილეობა 97₾');
+  assert.equal(result.amount, 130);
+  assert.equal(result.contributionAmount, 97);
+  assert.equal(
+    formatTbcApplicationStatus(5, '130.50', '96.50'),
+    'თანამონაწილეობით დამტკიცდა — ბანკი 130.50₾; კლიენტის თანამონაწილეობა 96.50₾; მერჩანტის დასტურს ელოდება',
+  );
+});
+
+test('keeps the standard TBC status when no contribution is required', () => {
+  assert.equal(
+    parseTbcStatusPayload({ statusId: 2, amount: 227, contributionAmount: null }).status,
+    'ბანკმა დაამტკიცა — კლიენტის დადასტურებას ელოდება',
+  );
+  assert.equal(
+    parseTbcStatusPayload({ statusId: 8, amount: 227, contributionAmount: 0 }).status,
+    'თანხა ჩარიცხულია',
+  );
 });
 
 test('handles unavailable TBC status responses', () => {
