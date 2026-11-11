@@ -444,12 +444,13 @@ function formatTbcAmount(value) {
 
 function formatTbcApplicationStatus(statusId, amount, contributionAmount) {
   const baseStatus = TBC_STATUS_LABELS[statusId] || `TBC სტატუსი ${statusId}`;
-  const financed = normalizeTbcAmount(amount);
+  const total = normalizeTbcAmount(amount);
   const contribution = normalizeTbcAmount(contributionAmount);
 
   if (contribution === null || contribution <= 0) return baseStatus;
 
-  const details = `ბანკი ${financed === null ? '—' : `${formatTbcAmount(financed)}₾`}; კლიენტის თანამონაწილეობა ${formatTbcAmount(contribution)}₾`;
+  const financed = total !== null && contribution <= total ? total - contribution : null;
+  const details = `სრული თანხა ${total === null ? '—' : `${formatTbcAmount(total)}₾`}; ბანკი ${financed === null ? '—' : `${formatTbcAmount(financed)}₾`}; კლიენტის თანამონაწილეობა ${formatTbcAmount(contribution)}₾`;
   if (statusId === 2) return `დამტკიცდა თანამონაწილეობით — ${details}`;
   if (statusId === 5) return `თანამონაწილეობით დამტკიცდა — ${details}; მერჩანტის დასტურს ელოდება`;
   if (statusId === 8) return `თანამონაწილეობით გაცემულია — ${details}`;
@@ -471,6 +472,9 @@ function parseTbcStatusPayload(payload, httpStatus = 200) {
 
   const amount = normalizeTbcAmount(payload?.amount);
   const contributionAmount = normalizeTbcAmount(payload?.contributionAmount);
+  const financedAmount = amount !== null && contributionAmount !== null && contributionAmount <= amount
+    ? amount - contributionAmount
+    : null;
   return {
     available: true,
     statusCode: httpStatus,
@@ -478,6 +482,7 @@ function parseTbcStatusPayload(payload, httpStatus = 200) {
     status: formatTbcApplicationStatus(statusId, amount, contributionAmount),
     description: payload?.description || payload?.statusDescription || null,
     amount,
+    financedAmount,
     contributionAmount,
   };
 }
@@ -555,6 +560,7 @@ async function enrichTbcStatuses(records, bankConfig) {
           record.applicationStatusId = result.statusId;
           record.applicationStatus = result.status;
           record.applicationAmount = result.amount;
+          record.applicationFinancedAmount = result.financedAmount;
           record.applicationContributionAmount = result.contributionAmount;
           record.applicationStatusCheckedAt = new Date().toISOString();
         }
