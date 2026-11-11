@@ -432,6 +432,31 @@ function getTbcStatusId(payload) {
   return value === undefined ? null : Number(value);
 }
 
+function normalizeTbcAmount(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount >= 0 ? amount : null;
+}
+
+function formatTbcAmount(value) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+function formatTbcApplicationStatus(statusId, amount, contributionAmount) {
+  const baseStatus = TBC_STATUS_LABELS[statusId] || `TBC სტატუსი ${statusId}`;
+  const financed = normalizeTbcAmount(amount);
+  const contribution = normalizeTbcAmount(contributionAmount);
+
+  if (contribution === null || contribution <= 0) return baseStatus;
+
+  const details = `ბანკი ${financed === null ? '—' : `${formatTbcAmount(financed)}₾`}; კლიენტის თანამონაწილეობა ${formatTbcAmount(contribution)}₾`;
+  if (statusId === 2) return `დამტკიცდა თანამონაწილეობით — ${details}`;
+  if (statusId === 5) return `თანამონაწილეობით დამტკიცდა — ${details}; მერჩანტის დასტურს ელოდება`;
+  if (statusId === 8) return `თანამონაწილეობით გაცემულია — ${details}`;
+  if (statusId === 9) return `თანამონაწილეობით გაცემას ელოდება — ${details}`;
+  return `${baseStatus} — ${details}`;
+}
+
 function parseTbcStatusPayload(payload, httpStatus = 200) {
   const statusId = getTbcStatusId(payload);
   if (httpStatus !== 200 || statusId === null) {
@@ -444,14 +469,16 @@ function parseTbcStatusPayload(payload, httpStatus = 200) {
     };
   }
 
+  const amount = normalizeTbcAmount(payload?.amount);
+  const contributionAmount = normalizeTbcAmount(payload?.contributionAmount);
   return {
     available: true,
     statusCode: httpStatus,
     statusId,
-    status: TBC_STATUS_LABELS[statusId] || `TBC სტატუსი ${statusId}`,
+    status: formatTbcApplicationStatus(statusId, amount, contributionAmount),
     description: payload?.description || payload?.statusDescription || null,
-    amount: payload?.amount ?? null,
-    contributionAmount: payload?.contributionAmount ?? null,
+    amount,
+    contributionAmount,
   };
 }
 
@@ -527,6 +554,8 @@ async function enrichTbcStatuses(records, bankConfig) {
         if (result.available) {
           record.applicationStatusId = result.statusId;
           record.applicationStatus = result.status;
+          record.applicationAmount = result.amount;
+          record.applicationContributionAmount = result.contributionAmount;
           record.applicationStatusCheckedAt = new Date().toISOString();
         }
       } catch (error) {
@@ -1088,6 +1117,7 @@ module.exports.statusHelpers = {
   bogStatusConfigForProvider,
   fetchBogStatus,
   TBC_STATUS_LABELS,
+  formatTbcApplicationStatus,
   parseTbcStatusPayload,
   tbcStatusCheckIsDue,
   fetchTbcStatus,
