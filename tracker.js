@@ -226,6 +226,7 @@ const BOG_STATUS_LABELS = {
   fail: 'განაცხადი ვერ დასრულდა',
   unknown: 'განაცხადი მუშავდება',
 };
+const BOG_ORDER_ID_PATTERN = /^[A-Za-z0-9_-]{20,100}$/;
 
 const CREDO_STATUS_MIN_AGE_MS = 30 * 60 * 1000;
 const CREDO_STATUS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -258,13 +259,13 @@ function extractApplicationMeta(tags, note, provider, fallbackStatus) {
   const sessionId = text.match(/TBC\s+Session\s+ID:\s*([0-9a-f-]{20,})/i)?.[1] || null;
   const tbcStatusMatch = text.match(/TBC(?:-|\s+)STATUS(?:\s+ID)?(?:-|:|\s)+(\d{1,2})/i);
   const credoStatusMatch = text.match(/CREDO(?:-|\s+)STATUS(?:\s+ID)?(?:-|:|\s)+(\d{1,2})/i);
-  const bogOrderId = text.match(/BOG\s+Order\s+ID:\s*([0-9a-f-]{20,})/i)?.[1] || null;
+  const bogOrderId = text.match(/BOG\s+Order\s+ID:\s*([A-Za-z0-9_-]{20,100})/i)?.[1] || null;
   const bogStatusMatch = text.match(/BOG\s+Status:\s*([a-z_]+)/i);
   const bogInstallmentStatusMatch = text.match(/BOG\s+Installment\s+Status:\s*([a-z_]+)/i);
   const tbcStatusId = tbcStatusMatch ? Number(tbcStatusMatch[1]) : null;
   const credoStatusId = credoStatusMatch ? Number(credoStatusMatch[1]) : null;
   const credoCode = text.match(/Credo\s+Order\s+Code:\s*([\w-]+)/i)?.[1] || null;
-  const bogStatusId = String(bogInstallmentStatusMatch?.[1] || bogStatusMatch?.[1] || '').toLowerCase() || null;
+  const bogStatusId = resolveBogStatusId(bogStatusMatch?.[1], bogInstallmentStatusMatch?.[1]);
 
   let applicationStatus = fallbackStatus || 'განაცხადი შექმნილია';
   if (provider === 'COD') applicationStatus = 'კურიერთან გადახდა';
@@ -277,6 +278,23 @@ function extractApplicationMeta(tags, note, provider, fallbackStatus) {
     : (provider === 'BOG' || provider === 'BOG_BNPL' ? bogStatusId : tbcStatusId);
 
   return { applicationStatus, applicationStatusId, applicationSessionId: sessionId, applicationCode: credoCode, applicationOrderId: bogOrderId };
+}
+
+function resolveBogStatusId(orderStatus, installmentStatus) {
+  const status = String(orderStatus || '').trim().toLowerCase();
+  const installment = String(installmentStatus || '').trim().toLowerCase();
+
+  if (status === 'success') return 'success';
+  if (status === 'in_progress') return 'in_progress';
+  if (status === 'error') {
+    return ['reject', 'reverse_success', 'fail'].includes(installment)
+      ? installment
+      : 'error';
+  }
+
+  return ['success', 'reject', 'reverse_success', 'fail', 'unknown'].includes(installment)
+    ? installment
+    : null;
 }
 
 function parseBogStatusPayload(payload, httpStatus = 200) {
@@ -292,7 +310,7 @@ function parseBogStatusPayload(payload, httpStatus = 200) {
     };
   }
 
-  const statusId = installmentStatus || status;
+  const statusId = resolveBogStatusId(status, installmentStatus);
   return {
     available: true,
     statusCode: httpStatus,
@@ -333,15 +351,14 @@ async function getBogAccessToken(bankConfig, options = {}) {
 
 async function fetchBogStatus(orderId, bankConfig, options = {}) {
   const id = String(orderId || '').trim();
-  if (!/^[0-9a-f-]{20,}$/i.test(id)) throw new Error('საქართველოს ბანკის განაცხადის ID არასწორია.');
+  if (!BOG_ORDER_ID_PATTERN.test(id)) throw new Error('საქართველოს ბანკის განაცხადის ID არასწორია.');
 
   const cached = bogStatusCache.get(id);
   if (!options.force && cached && Date.now() - cached.checkedAt < BOG_STATUS_CACHE_TTL_MS) {
     return cached.result;
   }
 
-  const token = await getBogAccessToken(bankConfig, options);
-  const response = await axios.get(
+  const requestStatus = (token) => axios.get(
     `https://installment.bog.ge/v1/installment/checkout/${encodeURIComponent(id)}`,
     {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -349,6 +366,14 @@ async function fetchBogStatus(orderId, bankConfig, options = {}) {
       validateStatus: () => true,
     },
   );
+
+  let token = await getBogAccessToken(bankConfig, options);
+  let response = await requestStatus(token);
+  if (response.status === 401) {
+    bogAccessTokenCache.delete(bankConfig?.bogClientId);
+    token = await getBogAccessToken(bankConfig, { ...options, force: true });
+    response = await requestStatus(token);
+  }
   const result = { orderId: id, ...parseBogStatusPayload(response.data || {}, response.status) };
   bogStatusCache.set(id, { checkedAt: Date.now(), result });
   return result;
@@ -953,7 +978,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
   app.get('/api/admin/bog-status', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     const orderId = String(req.query?.orderId || '').trim();
-    if (!/^[0-9a-f-]{20,}$/i.test(orderId)) return res.status(400).json({ error: 'საქართველოს ბანკის განაცხადის ID არასწორია.' });
+    if (!BOG_ORDER_ID_PATTERN.test(orderId)) return res.status(400).json({ error: 'საქართველოს ბანკის განაცხადის ID არასწორია.' });
 
     try {
       const requestedProvider = String(req.query?.provider || '').trim().toUpperCase();
@@ -1057,6 +1082,7 @@ module.exports.shopify = { shop: SHOP, getAccessToken, graphql };
 module.exports.statusHelpers = {
   extractAdminWorkflow,
   BOG_STATUS_LABELS,
+  resolveBogStatusId,
   parseBogStatusPayload,
   bogStatusCheckIsDue,
   bogStatusConfigForProvider,
