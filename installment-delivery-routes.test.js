@@ -21,9 +21,15 @@ test('all four Ezzy bank application payloads add server-priced delivery', () =>
   ];
 
   for (const route of routes) {
-    assert.match(route, /productsWithDelivery\(req\.body\.products, req\.body\.delivery_zone\)/);
+    assert.match(route, /productsWith(?:Credo)?Delivery\(req\.body\.products, req\.body\.delivery_zone\)/);
     assert.match(route, /installmentDeliveryError\(res, err\)/);
   }
+});
+
+test('Credo merges delivery into product prices instead of sending a delivery line', () => {
+  const route = section("app.post('/api/credo-order'", '/* ===================== SHOPIFY + CREDO FLOW');
+  assert.match(route, /productsWithCredoDelivery\(req\.body\.products, req\.body\.delivery_zone\)/);
+  assert.doesNotMatch(route, /productsWithDelivery\(req\.body\.products, req\.body\.delivery_zone\)/);
 });
 
 test('TBC cart application also adds server-priced delivery', () => {
