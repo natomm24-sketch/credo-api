@@ -63,6 +63,28 @@ test('sends URL-encoded SMSOffice request without exposing the key in the result
   assert.equal(JSON.stringify(result).includes('secret-key'), false);
 });
 
+test('fills courier delivery and remaining amount placeholders', async () => {
+  let submitted;
+  const client = createSmsOfficeClient({
+    apiKey: 'secret-key',
+    sender: 'ezzy.ge',
+    texts: { cod: 'მიწოდება {delivery_fee}₾, დარჩენილი {remaining_amount}₾.' },
+    request: async (_url, body) => {
+      submitted = new URLSearchParams(body);
+      return { Success: true };
+    },
+  });
+
+  await client.sendOrderMessage({
+    type: 'cod',
+    phone: '555123456',
+    variables: { delivery_fee: 8, remaining_amount: 149 },
+  });
+
+  assert.equal(submitted.get('content'), 'მიწოდება 8₾, დარჩენილი 149₾.');
+  assert.equal(submitted.get('content').includes('{'), false);
+});
+
 test('sends a one-time login code with runtime content', async () => {
   let submitted;
   const client = createSmsOfficeClient({

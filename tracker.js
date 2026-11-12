@@ -285,10 +285,10 @@ function detectProvider(tags, note) {
   const text = `${Array.isArray(tags) ? tags.join(' ') : tags || ''} ${note || ''}`.toLocaleUpperCase('ka-GE');
   if (text.includes('TBC')) return 'TBC';
   if (text.includes('CREDO')) return 'CREDO';
+  if (text.includes('კურიერთან') || text.includes('CASH ON DELIVERY') || /\bCOD\b/.test(text)) return 'COD';
   if (text.includes('KEEPZ')) return 'KEEPZ';
   if (text.includes('BOG-BNPL')) return 'BOG_BNPL';
   if (text.includes('BOG')) return 'BOG';
-  if (text.includes('კურიერთან') || text.includes('CASH ON DELIVERY') || /\bCOD\b/.test(text)) return 'COD';
   return 'OTHER';
 }
 
@@ -300,6 +300,7 @@ function extractApplicationMeta(tags, note, provider, fallbackStatus) {
   const bogOrderId = text.match(/BOG\s+Order\s+ID:\s*([A-Za-z0-9_-]{20,100})/i)?.[1] || null;
   const bogStatusMatch = text.match(/BOG\s+Status:\s*([a-z_]+)/i);
   const bogInstallmentStatusMatch = text.match(/BOG\s+Installment\s+Status:\s*([a-z_]+)/i);
+  const keepzSuccessful = /KEEPZ-STATUS-SUCCESS|Keepz\s+Status:\s*SUCCESS/i.test(text);
   const tbcStatusId = tbcStatusMatch ? Number(tbcStatusMatch[1]) : null;
   const credoStatusId = credoStatusMatch ? Number(credoStatusMatch[1]) : null;
   const credoCode = text.match(/Credo\s+Order\s+Code:\s*([\w-]+)/i)?.[1] || null;
@@ -310,10 +311,13 @@ function extractApplicationMeta(tags, note, provider, fallbackStatus) {
   if (provider === 'TBC' && tbcStatusId !== null) applicationStatus = TBC_STATUS_LABELS[tbcStatusId] || `სტატუსი ${tbcStatusId}`;
   if (provider === 'CREDO' && credoStatusId !== null) applicationStatus = CREDO_STATUS_LABELS[credoStatusId] || `Credo სტატუსი ${credoStatusId}`;
   if ((provider === 'BOG' || provider === 'BOG_BNPL') && bogStatusId) applicationStatus = BOG_STATUS_LABELS[bogStatusId] || `BOG სტატუსი: ${bogStatusId}`;
+  if (provider === 'KEEPZ') applicationStatus = keepzSuccessful ? 'გადახდილია' : 'გადახდა მუშავდება';
 
   const applicationStatusId = provider === 'CREDO'
     ? credoStatusId
-    : (provider === 'BOG' || provider === 'BOG_BNPL' ? bogStatusId : tbcStatusId);
+    : (provider === 'BOG' || provider === 'BOG_BNPL'
+      ? bogStatusId
+      : (provider === 'KEEPZ' ? (keepzSuccessful ? 'success' : 'in_progress') : tbcStatusId));
 
   return { applicationStatus, applicationStatusId, applicationSessionId: sessionId, applicationCode: credoCode, applicationOrderId: bogOrderId };
 }

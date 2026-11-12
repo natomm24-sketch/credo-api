@@ -8,6 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const { sendMetaPurchase } = require('./meta-capi');
 const { createSmsOfficeClient } = require('./sms-office');
 const {
+  deliveryDetails,
   deliveryNote,
   deliveryTag,
   draftShippingLine,
@@ -32,9 +33,9 @@ const smsOffice = createSmsOfficeClient({
   },
 });
 
-async function sendEzzyOrderSms({ type, phone, draftOrderId }) {
+async function sendEzzyOrderSms({ type, phone, draftOrderId, variables }) {
   try {
-    const result = await smsOffice.sendOrderMessage({ type, phone, draftOrderId });
+    const result = await smsOffice.sendOrderMessage({ type, phone, draftOrderId, variables });
     if (result.skipped) console.warn(`ORDER SMS SKIPPED (${type}): ${result.reason}`);
     return result.sent === true;
   } catch (error) {
@@ -2135,6 +2136,111 @@ return res.json({
   }
 });
 
+app.post('/api/keepz-courier-order', async (req, res) => {
+  try {
+    const products = Array.isArray(req.body.products) ? req.body.products : [];
+    const delivery = deliveryDetails(req.body.delivery_zone);
+    const customer = req.body.customer || req.body;
+    if (!products.length || !delivery) return res.status(400).json({ error: 'Invalid courier order' });
+
+    let productTotal = 0;
+    const trustedProducts = [];
+    for (const product of products) {
+      const quantity = Number(product.amount) || 1;
+      const shopifyRes = await axios.get(
+        `https://${SHOP}/admin/api/2024-01/variants/${product.id}.json`,
+        { headers: { 'X-Shopify-Access-Token': await getEzzyAccessToken() } },
+      );
+      const realPrice = Number(shopifyRes.data.variant.price);
+      if (!Number.isFinite(realPrice) || realPrice <= 0) return res.status(400).json({ error: 'Invalid product price' });
+      productTotal += realPrice * quantity;
+      trustedProducts.push({ id: Number(product.id), quantity, item_price: realPrice });
+    }
+
+    const amount = Number(delivery.fee.toFixed(2));
+    const orderId = uuidv4();
+    const productAmount = Number(productTotal.toFixed(2));
+    const orderDeliveryTag = deliveryTag(delivery.zone);
+    const draftOrderResponse = await axios.post(
+      `https://${SHOP}/admin/api/2024-01/draft_orders.json`,
+      {
+        draft_order: {
+          line_items: trustedProducts.map((product) => ({ variant_id: product.id, quantity: product.quantity })),
+          customer: { first_name: customer.name || 'Customer' },
+          shipping_address: {
+            first_name: customer.name || 'Customer',
+            address1: customer.address || '',
+            phone: customer.phone || '',
+            country: 'Georgia',
+          },
+          shipping_line: { title: delivery.title, price: amount.toFixed(2) },
+          note: `კურიერთან გადახდა\n\nსახელი: ${customer.name || ''}\nტელეფონი: ${customer.phone || ''}\nმისამართი: ${customer.address || ''}\nKeepz Order ID: ${orderId}\nმიწოდების წინასწარი გადახდა: ${amount.toFixed(2)} GEL\nკურიერთან დარჩენილი თანხა: ${productAmount.toFixed(2)} GEL`,
+          note_attributes: [
+            { name: 'keepz_order_id', value: orderId },
+            { name: 'keepz_amount', value: amount.toFixed(2) },
+            { name: 'keepz_payment_type', value: 'courier' },
+            { name: 'courier_product_total', value: productAmount.toFixed(2) },
+            { name: 'delivery_zone', value: delivery.zone },
+          ],
+          tags: `COD,COURIER-ADVANCE-PENDING,KZ:${orderId},${orderDeliveryTag}`,
+          use_customer_default_address: false,
+        },
+      },
+      {
+        headers: {
+          'X-Shopify-Access-Token': await getEzzyAccessToken(),
+          'Content-Type': 'application/json',
+        },
+      },
+    );
+
+    const draftOrderId = draftOrderResponse.data.draft_order.id;
+    pendingOrders[orderId] = {
+      customer,
+      products: trustedProducts,
+      amount,
+      productTotal: productAmount,
+      paymentType: 'courier',
+      deliveryZone: delivery.zone,
+      draftOrderId,
+      createdAt: Date.now(),
+    };
+
+    const keepz = new Keepz(KEEPZ_PUBLIC_KEY_EZZY, KEEPZ_PRIVATE_KEY_EZZY);
+    const encrypted = keepz.encrypt({
+      amount,
+      currency: 'GEL',
+      integratorId: KEEPZ_INTEGRATOR_ID_EZZY,
+      integratorOrderId: orderId,
+      receiverId: KEEPZ_RECEIVER_ID_EZZY,
+      receiverType: 'BRANCH',
+      directLinkProvider: 'DEFAULT',
+      language: 'KA',
+      successRedirectUri: `https://ezzy.ge/pages/payment-success?orderId=${orderId}&mode=courier`,
+      failRedirectUri: 'https://ezzy.ge/payment-fail',
+      callbackUri: 'https://api.ezzy.ge/api/keepz-callback',
+    });
+    const response = await axios.post(
+      'https://gateway.keepz.me/ecommerce-service/api/integrator/order',
+      {
+        identifier: KEEPZ_INTEGRATOR_ID_EZZY,
+        encryptedData: encrypted.encryptedData,
+        encryptedKeys: encrypted.encryptedKeys,
+        aes: true,
+      },
+      { headers: { 'Content-Type': 'application/json' } },
+    );
+    const decrypted = keepz.decrypt(response.data.encryptedData, response.data.encryptedKeys);
+    const redirectUrl = decrypted?.redirectUrl || decrypted?.paymentUrl || decrypted?.urlForQR || decrypted?.redirectUri;
+    if (!redirectUrl) throw new Error('No redirect URL');
+    return res.json({ redirectUrl, orderId, draftOrderId });
+  } catch (error) {
+    console.error('KEEPZ COURIER ERROR:', error.response?.data || error.message);
+    if (installmentDeliveryError(res, error)) return;
+    return res.status(500).json({ error: error.response?.data || error.message });
+  }
+});
+
 const SHOPIFY_API_VERSION = '2026-07';
 
 function isUuid(value) {
@@ -2202,6 +2308,12 @@ function keepzOrderFromDraft(draft) {
   const keepzAmount = (draft.note_attributes || []).find(attribute =>
     attribute.name === 'keepz_amount'
   )?.value;
+  const paymentType = (draft.note_attributes || []).find(attribute =>
+    attribute.name === 'keepz_payment_type'
+  )?.value || 'card';
+  const productTotal = (draft.note_attributes || []).find(attribute =>
+    attribute.name === 'courier_product_total'
+  )?.value;
 
   return {
     customer: {
@@ -2209,6 +2321,8 @@ function keepzOrderFromDraft(draft) {
       phone: draft.shipping_address?.phone || draft.customer?.phone || ''
     },
     amount: Number(keepzAmount || draft.total_price),
+    paymentType,
+    productTotal: Number(productTotal || draft.subtotal_price || draft.total_price),
     products: (draft.line_items || []).map(item => ({
       id: item.variant_id || item.product_id,
       quantity: Number(item.quantity) || 1,
@@ -2217,7 +2331,25 @@ function keepzOrderFromDraft(draft) {
   };
 }
 
-async function completeKeepzDraft(draft) {
+async function markKeepzDraftSuccessful(draft, paymentType) {
+  const tags = String(draft.tags || '').split(',').map((tag) => tag.trim()).filter(Boolean);
+  const successTags = paymentType === 'courier'
+    ? ['KEEPZ-STATUS-SUCCESS', 'COURIER-ADVANCE-PAID']
+    : ['KEEPZ-STATUS-SUCCESS'];
+  const updatedTags = [...new Set([...tags.filter((tag) => tag !== 'COURIER-ADVANCE-PENDING'), ...successTags])];
+  const cleanNote = String(draft.note || '').replace(/\n?Keepz Status:[^\n]*/gi, '').trim();
+  const response = await axios.put(
+    `https://${SHOP}/admin/api/${SHOPIFY_API_VERSION}/draft_orders/${draft.id}.json`,
+    { draft_order: { id: draft.id, tags: updatedTags.join(','), note: `${cleanNote}\nKeepz Status: SUCCESS` } },
+    {
+      headers: { 'X-Shopify-Access-Token': await getEzzyAccessToken(), 'Content-Type': 'application/json' },
+      timeout: 10000,
+    },
+  );
+  return response.data.draft_order || draft;
+}
+
+async function completeKeepzDraft(draft, { paymentPending = false } = {}) {
   if (draft.order_id || draft.status === 'completed') return draft;
 
   const headers = { 'X-Shopify-Access-Token': await getEzzyAccessToken() };
@@ -2226,7 +2358,7 @@ async function completeKeepzDraft(draft) {
     const response = await axios.put(
       `https://${SHOP}/admin/api/${SHOPIFY_API_VERSION}/draft_orders/${draft.id}/complete.json`,
       null,
-      { headers, timeout: 15000 }
+      { headers, params: paymentPending ? { payment_pending: true } : undefined, timeout: 15000 }
     );
     return response.data.draft_order;
   } catch (error) {
@@ -2284,30 +2416,39 @@ app.post('/api/keepz-callback', async (req, res) => {
       return res.sendStatus(409);
     }
 
-    const completedDraft = await completeKeepzDraft(draft);
+    const paymentType = savedOrder.paymentType === 'courier' ? 'courier' : 'card';
+    const markedDraft = await markKeepzDraftSuccessful(draft, paymentType);
+    const completedDraft = await completeKeepzDraft(markedDraft, { paymentPending: paymentType === 'courier' });
 
-    await sendMetaPurchase({
-      eventId: `keepz-purchase-${integratorOrderId}`,
-      orderId: completedDraft.order_id || integratorOrderId,
-      value: savedOrder.amount,
-      currency: 'GEL',
-      contents: savedOrder.products,
-      customer: savedOrder.customer,
-      sourceUrl: 'https://ezzy.ge/'
-    });
+    if (paymentType === 'card') {
+      await sendMetaPurchase({
+        eventId: `keepz-purchase-${integratorOrderId}`,
+        orderId: completedDraft.order_id || integratorOrderId,
+        value: savedOrder.amount,
+        currency: 'GEL',
+        contents: savedOrder.products,
+        customer: savedOrder.customer,
+        sourceUrl: 'https://ezzy.ge/'
+      });
+    }
 
     const smsSent = pending?.smsSentAt
       ? true
       : await sendEzzyOrderSms({
-          type: 'card',
+          type: paymentType === 'courier' ? 'cod' : 'card',
           phone: savedOrder.customer?.phone,
           draftOrderId: draft.id,
+          variables: paymentType === 'courier' ? {
+            delivery_fee: Number(savedOrder.amount).toFixed(2).replace(/\.00$/, ''),
+            remaining_amount: Number(savedOrder.productTotal).toFixed(2).replace(/\.00$/, ''),
+          } : undefined,
         });
 
     pendingOrders[integratorOrderId] = {
       ...savedOrder,
       draftOrderId: draft.id,
       shopifyOrderId: completedDraft.order_id,
+      paymentType,
       smsSentAt: smsSent ? (pending?.smsSentAt || Date.now()) : undefined,
       completedAt: Date.now()
     };

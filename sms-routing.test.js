@@ -13,9 +13,14 @@ function route(pathname) {
   return source.slice(start, end === -1 ? source.length : end);
 }
 
-test('COD and successful card callback trigger their own configurable SMS', () => {
+test('legacy COD and verified Keepz callbacks use their own configurable SMS', () => {
   assert.match(route('/api/create-order-and-cod-ezzy'), /sendEzzyOrderSms\(\{ type: 'cod'/);
-  assert.match(route('/api/keepz-callback'), /sendEzzyOrderSms\(\{[\s\S]*?type: 'card'/);
+  const callback = route('/api/keepz-callback');
+  assert.match(callback, /type: paymentType === 'courier' \? 'cod' : 'card'/);
+  assert.match(callback, /delivery_fee:[\s\S]*?remaining_amount:/);
+  assert.match(callback, /if \(paymentType === 'card'\) \{[\s\S]*?sendMetaPurchase/);
+  assert.match(callback, /paymentPending: paymentType === 'courier'/);
+  assert.match(callback, /markKeepzDraftSuccessful/);
 });
 
 test('bank application creation preserves redirects without sending an early SMS', () => {

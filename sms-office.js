@@ -74,8 +74,12 @@ function createSmsOfficeClient({ apiKey, sender, texts = {}, request = defaultRe
     return { sent: true, reference };
   }
 
-  async function sendOrderMessage({ type, phone, draftOrderId }) {
-    return sendMessage({ phone, content: texts[type], reference: smsReference(draftOrderId) });
+  async function sendOrderMessage({ type, phone, draftOrderId, variables = {} }) {
+    const content = Object.entries(variables).reduce(
+      (message, [name, value]) => message.replaceAll(`{${name}}`, String(value)),
+      String(texts[type] || ''),
+    );
+    return sendMessage({ phone, content, reference: smsReference(draftOrderId) });
   }
 
   return { sendMessage, sendOrderMessage };

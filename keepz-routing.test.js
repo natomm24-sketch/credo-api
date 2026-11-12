@@ -29,6 +29,35 @@ test('Ezzy Keepz uses isolated new-company credentials and preserves routing', (
   assert.match(orderRoute, /https:\/\/api\.ezzy\.ge\/api\/keepz-callback/);
 });
 
+test('courier Keepz charges only server-priced delivery and preserves callback safety', () => {
+  const courierRoute = source.slice(
+    source.indexOf("app.post('/api/keepz-courier-order'"),
+    source.indexOf('const SHOPIFY_API_VERSION', source.indexOf("app.post('/api/keepz-courier-order'")),
+  );
+  const callbackRoute = source.slice(
+    source.indexOf("app.post('/api/keepz-callback'"),
+    source.indexOf("app.post('/api/keepz-success'"),
+  );
+
+  assert.match(courierRoute, /deliveryDetails\(req\.body\.delivery_zone\)/);
+  assert.match(courierRoute, /const amount = Number\(delivery\.fee\.toFixed\(2\)\)/);
+  assert.match(courierRoute, /keepz_payment_type['"], value: 'courier'/);
+  assert.match(courierRoute, /successRedirectUri:[\s\S]*mode=courier/);
+  assert.match(courierRoute, /callbackUri: 'https:\/\/api\.ezzy\.ge\/api\/keepz-callback'/);
+  assert.doesNotMatch(courierRoute, /sendMetaPurchase/);
+
+  assert.match(callbackRoute, /Math\.abs\(callbackAmount - Number\(savedOrder\.amount\)\) > 0\.009/);
+  assert.match(source, /KEEPZ-STATUS-SUCCESS/);
+  assert.match(callbackRoute, /paymentPending: paymentType === 'courier'/);
+});
+
+test('Keepz success is persisted for order-admin status display', () => {
+  const trackerSource = fs.readFileSync(path.join(__dirname, 'tracker.js'), 'utf8');
+  assert.match(trackerSource, /KEEPZ-STATUS-SUCCESS\|Keepz\\s\+Status/);
+  assert.match(trackerSource, /provider === 'KEEPZ'[\s\S]*?'გადახდილია'/);
+  assert.match(trackerSource, /keepzSuccessful \? 'success' : 'in_progress'/);
+});
+
 test('Comfortmix Keepz remains on the existing credential set', () => {
   const comfortRoute = source.slice(
     source.indexOf("app.post('/api/keepz-order-comfortmix'"),
