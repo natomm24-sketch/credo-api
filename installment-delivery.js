@@ -75,6 +75,37 @@ function productsWithDelivery(products, value) {
   ];
 }
 
+function productsWithCredoDelivery(products, value) {
+  const safeProducts = Array.isArray(products)
+    ? products.filter((product) => !isDeliveryItem(product)).map((product) => ({ ...product }))
+    : [];
+  const delivery = deliveryDetails(value);
+
+  if (!delivery || !safeProducts.length) return safeProducts;
+
+  const deliveryInTetri = delivery.fee * 100;
+  const singleQuantityIndex = safeProducts.findIndex(
+    (product) => Number(product.amount || 1) === 1,
+  );
+  const targetIndex = singleQuantityIndex >= 0 ? singleQuantityIndex : 0;
+  const target = safeProducts[targetIndex];
+  const quantity = Number(target.amount || 1);
+  const price = Number(target.price);
+
+  if (quantity > 1 && Number.isInteger(quantity)) {
+    safeProducts.splice(
+      targetIndex,
+      1,
+      { ...target, amount: 1, price: price + deliveryInTetri },
+      { ...target, amount: quantity - 1 },
+    );
+  } else {
+    safeProducts[targetIndex] = { ...target, price: price + deliveryInTetri };
+  }
+
+  return safeProducts;
+}
+
 function draftShippingLine(value) {
   const delivery = deliveryDetails(value);
   if (!delivery) return null;
@@ -131,6 +162,7 @@ module.exports = {
   deliveryTag,
   draftShippingLine,
   normalizeDeliveryZone,
+  productsWithCredoDelivery,
   productsWithDelivery,
   totalWithDeliveryFallback,
 };
