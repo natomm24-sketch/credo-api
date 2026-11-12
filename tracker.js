@@ -1,12 +1,20 @@
 const axios = require('axios');
 const { totalWithDeliveryFallback } = require('./installment-delivery');
 const crypto = require('crypto');
+const {
+  createLoginChallenge,
+  createSessionToken,
+  verifyLoginChallenge,
+  verifySessionToken,
+} = require('./account-auth');
 
 const SHOP = process.env.SHOPIFY_TRACKER_SHOP || 'x8hxwv-pn.myshopify.com';
 const CLIENT_ID = process.env.SHOPIFY_TRACKER_CLIENT_ID;
 const CLIENT_SECRET = process.env.SHOPIFY_TRACKER_CLIENT_SECRET;
 const rateLimits = new Map();
 const adminRateLimits = new Map();
+const loginRequestLimits = new Map();
+const loginVerifyLimits = new Map();
 let accessToken = null;
 let tokenExpiresAt = 0;
 
@@ -48,6 +56,34 @@ function setTrackerCors(req, res) {
     /^http:\/\/localhost(?::\d+)?$/i.test(origin);
   if (allowedOrigin) res.set('Access-Control-Allow-Origin', origin);
   res.set('Cache-Control', 'no-store');
+}
+
+function setAccountCors(req, res) {
+  setTrackerCors(req, res);
+  res.set('Access-Control-Allow-Credentials', 'true');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+  res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+}
+
+function limited(map, key, max, windowMs) {
+  const now = Date.now();
+  const record = map.get(key);
+  if (!record || now - record.startedAt > windowMs) {
+    map.set(key, { startedAt: now, count: 1 });
+    return false;
+  }
+  record.count += 1;
+  return record.count > max;
+}
+
+function clientIp(req) {
+  return String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || 'unknown';
+}
+
+function cookieValue(req, name) {
+  const prefix = `${name}=`;
+  const part = String(req.headers.cookie || '').split(';').map((item) => item.trim()).find((item) => item.startsWith(prefix));
+  return part ? decodeURIComponent(part.slice(prefix.length)) : '';
 }
 
 function adminRequestAllowed(req) {
@@ -656,7 +692,177 @@ async function enrichCredoStatuses(records, bankConfig) {
   return records;
 }
 
+function phoneSearch(phone) {
+  return [`"+995${phone}"`, `"995${phone}"`, `"${phone}"`].join(' OR ');
+}
+
+async function phoneHasOrders(phone) {
+  const search = phoneSearch(phone);
+  const [orders, drafts] = await Promise.all([
+    graphql(`query AccountOrderExists($search: String!) { orders(first: 1, query: $search) { nodes { id } } }`, { search }),
+    graphql(`query AccountDraftExists($search: String!) { draftOrders(first: 1, query: $search) { nodes { id } } }`, { search }).catch(() => ({ draftOrders: { nodes: [] } })),
+  ]);
+  return Boolean(orders.orders?.nodes?.length || drafts.draftOrders?.nodes?.length);
+}
+
+async function findOrdersByPhone(phone, bankConfig) {
+  const search = phoneSearch(phone);
+  const orderQuery = `
+    query AccountOrders($search: String!) {
+      orders(first: 50, query: $search, sortKey: CREATED_AT, reverse: true) {
+        nodes {
+          name createdAt displayFinancialStatus displayFulfillmentStatus
+          totalPriceSet { shopMoney { amount currencyCode } }
+          customer { phone }
+          shippingAddress { phone }
+          billingAddress { phone }
+          lineItems(first: 20) { nodes { name quantity variantTitle image { url altText } variant { product { handle onlineStoreUrl } } } }
+          fulfillments { status trackingInfo(first: 10) { company number url } }
+        }
+      }
+    }
+  `;
+  const draftQuery = `
+    query AccountDraftOrders($search: String!) {
+      draftOrders(first: 50, query: $search, sortKey: UPDATED_AT, reverse: true) {
+        nodes {
+          name createdAt status tags note2
+          totalPriceSet { shopMoney { amount currencyCode } }
+          customer { phone }
+          shippingAddress { phone }
+          lineItems(first: 20) { nodes { name quantity variantTitle image { url altText } variant { product { handle onlineStoreUrl } } } }
+        }
+      }
+    }
+  `;
+  const [data, draftData] = await Promise.all([
+    graphql(orderQuery, { search }),
+    graphql(draftQuery, { search }).catch((error) => {
+      console.error('ACCOUNT DRAFT TRACKER ERROR:', error.response?.status || error.message);
+      return { draftOrders: { nodes: [] } };
+    }),
+  ]);
+  const matchesPhone = (record) => [record.customer, record.shippingAddress, record.billingAddress]
+    .filter(Boolean)
+    .some((contact) => normalizePhone(contact.phone) === phone);
+  const orders = (data.orders?.nodes || []).filter(matchesPhone).map((order) => ({
+    kind: 'order',
+    number: order.name,
+    createdAt: order.createdAt,
+    financialStatus: order.displayFinancialStatus,
+    fulfillmentStatus: order.displayFulfillmentStatus,
+    total: order.totalPriceSet?.shopMoney || null,
+    items: (order.lineItems?.nodes || []).map((item) => ({
+      name: item.name,
+      quantity: item.quantity,
+      variant: item.variantTitle || null,
+      image: item.image ? { url: item.image.url, alt: item.image.altText || item.name } : null,
+      productUrl: item.variant?.product?.onlineStoreUrl || (item.variant?.product?.handle ? `https://ezzy.ge/products/${item.variant.product.handle}` : null),
+    })),
+    tracking: (order.fulfillments || []).flatMap((fulfillment) => (fulfillment.trackingInfo || []).map((info) => ({
+      status: fulfillment.status,
+      company: info.company || null,
+      number: info.number || null,
+      url: info.url || null,
+    }))),
+  }));
+  const drafts = (draftData.draftOrders?.nodes || []).filter(matchesPhone).map((draft) => {
+    const provider = detectProvider(draft.tags, draft.note2);
+    return {
+      kind: 'draft',
+      number: draft.name,
+      createdAt: draft.createdAt,
+      financialStatus: 'PENDING',
+      fulfillmentStatus: 'DRAFT',
+      draftStatus: draft.status,
+      provider,
+      ...extractApplicationMeta(draft.tags, draft.note2, provider, ''),
+      total: draft.totalPriceSet?.shopMoney || null,
+      items: (draft.lineItems?.nodes || []).map((item) => ({
+        name: item.name,
+        quantity: item.quantity,
+        variant: item.variantTitle || null,
+        image: item.image ? { url: item.image.url, alt: item.image.altText || item.name } : null,
+        productUrl: item.variant?.product?.onlineStoreUrl || (item.variant?.product?.handle ? `https://ezzy.ge/products/${item.variant.product.handle}` : null),
+      })),
+      tracking: [],
+    };
+  });
+  await Promise.all([
+    enrichCredoStatuses(drafts, bankConfig),
+    enrichTbcStatuses(drafts, bankConfig),
+    enrichBogStatuses(drafts, bankConfig),
+  ]);
+  return [...orders, ...drafts].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 10);
+}
+
 module.exports = function registerOrderTracker(app, bankConfig = {}) {
+  app.options(['/api/account/request-code', '/api/account/verify-code', '/api/account/orders', '/api/account/logout'], (req, res) => {
+    setAccountCors(req, res);
+    return res.sendStatus(204);
+  });
+
+  app.post('/api/account/request-code', async (req, res) => {
+    setAccountCors(req, res);
+    const phone = normalizePhone(req.body?.phone);
+    if (!phone) return res.status(400).json({ error: 'შეიყვანეთ ქართული მობილურის ნომერი.' });
+    if (limited(loginRequestLimits, `${clientIp(req)}:${phone}`, 3, 10 * 60 * 1000)) {
+      return res.status(429).json({ error: 'კოდი უკვე გაიგზავნა. რამდენიმე წუთში თავიდან სცადეთ.' });
+    }
+    const secret = String(bankConfig.trackerSessionSecret || '');
+    if (secret.length < 32) return res.status(503).json({ error: 'პირადი კაბინეტი დროებით მიუწვდომელია.' });
+    try {
+      const accountExists = await phoneHasOrders(phone);
+      const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+      const challenge = createLoginChallenge({ phone, code, accountExists, secret });
+      if (accountExists) {
+        const template = String(bankConfig.otpText || 'ezzy.ge: პირად კაბინეტში შესვლის კოდია {code}. კოდი მოქმედებს 5 წუთი.');
+        await bankConfig.smsOffice?.sendMessage({
+          phone,
+          content: template.replaceAll('{code}', code),
+          reference: `login-${crypto.randomBytes(8).toString('hex')}`,
+        });
+      }
+      return res.json({ challenge, message: 'თუ ამ ნომერზე შეკვეთა არსებობს, შესვლის კოდი SMS-ით გაიგზავნა.' });
+    } catch (error) {
+      console.error('ACCOUNT LOGIN REQUEST ERROR:', error.code || error.response?.status || error.message);
+      return res.status(503).json({ error: 'კოდის გაგზავნა დროებით ვერ მოხერხდა. მოგვიანებით სცადეთ.' });
+    }
+  });
+
+  app.post('/api/account/verify-code', (req, res) => {
+    setAccountCors(req, res);
+    if (limited(loginVerifyLimits, clientIp(req), 10, 10 * 60 * 1000)) {
+      return res.status(429).json({ error: 'ძალიან ბევრი მცდელობაა. რამდენიმე წუთში თავიდან სცადეთ.' });
+    }
+    const secret = String(bankConfig.trackerSessionSecret || '');
+    if (secret.length < 32) return res.status(503).json({ error: 'პირადი კაბინეტი დროებით მიუწვდომელია.' });
+    const phone = verifyLoginChallenge({ challenge: req.body?.challenge, code: req.body?.code, secret });
+    if (!phone) return res.status(401).json({ error: 'კოდი არასწორია ან ვადა ამოიწურა.' });
+    const session = createSessionToken({ phone, secret });
+    res.set('Set-Cookie', `ezzy_account=${encodeURIComponent(session)}; Max-Age=2592000; Path=/api/account; HttpOnly; Secure; SameSite=Lax`);
+    return res.json({ authenticated: true });
+  });
+
+  app.get('/api/account/orders', async (req, res) => {
+    setAccountCors(req, res);
+    const secret = String(bankConfig.trackerSessionSecret || '');
+    const phone = secret.length >= 32 ? verifySessionToken(cookieValue(req, 'ezzy_account'), secret) : null;
+    if (!phone) return res.status(401).json({ error: 'გთხოვთ, გაიაროთ ავტორიზაცია.' });
+    try {
+      return res.json({ orders: await findOrdersByPhone(phone, bankConfig) });
+    } catch (error) {
+      console.error('ACCOUNT ORDERS ERROR:', error.response?.status || error.message);
+      return res.status(503).json({ error: 'შეკვეთების ჩატვირთვა დროებით ვერ მოხერხდა.' });
+    }
+  });
+
+  app.post('/api/account/logout', (req, res) => {
+    setAccountCors(req, res);
+    res.set('Set-Cookie', 'ezzy_account=; Max-Age=0; Path=/api/account; HttpOnly; Secure; SameSite=Lax');
+    return res.json({ authenticated: false });
+  });
+
   app.post('/api/track-order', async (req, res) => {
     setTrackerCors(req, res);
 

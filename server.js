@@ -6,6 +6,7 @@ const qs = require('qs');
 const Keepz = require('./keepz');
 const { v4: uuidv4 } = require('uuid');
 const { sendMetaPurchase } = require('./meta-capi');
+const { createSmsOfficeClient } = require('./sms-office');
 const {
   deliveryNote,
   deliveryTag,
@@ -17,6 +18,29 @@ const {
 
 const app = express();
 const pendingOrders = {};
+const smsOffice = createSmsOfficeClient({
+  apiKey: process.env.SMSOFFICE_API_KEY,
+  sender: process.env.SMSOFFICE_SENDER,
+  texts: {
+    cod: process.env.SMSOFFICE_TEXT_COD,
+    card: process.env.SMSOFFICE_TEXT_CARD,
+    bog: process.env.SMSOFFICE_TEXT_BOG,
+    bogPart: process.env.SMSOFFICE_TEXT_BOG_PART,
+    tbc: process.env.SMSOFFICE_TEXT_TBC,
+    credo: process.env.SMSOFFICE_TEXT_CREDO,
+  },
+});
+
+async function sendEzzyOrderSms({ type, phone, draftOrderId }) {
+  try {
+    const result = await smsOffice.sendOrderMessage({ type, phone, draftOrderId });
+    if (result.skipped) console.warn(`ORDER SMS SKIPPED (${type}): ${result.reason}`);
+    return result.sent === true;
+  } catch (error) {
+    console.error(`ORDER SMS ERROR (${type}):`, error.code || error.message);
+    return false;
+  }
+}
 
 function requiredEnv(name) {
   const value = String(process.env[name] || '').trim();
@@ -748,12 +772,15 @@ app.post('/api/create-order-and-cod-ezzy', async (req, res) => {
 
     );
 
+    const draftOrderId = shopifyResponse.data.draft_order.id;
+    const smsSent = await sendEzzyOrderSms({ type: 'cod', phone: req.body.phone, draftOrderId });
+
     return res.json({
 
       success: true,
 
-      draftOrderId:
-        shopifyResponse.data.draft_order.id
+      draftOrderId,
+      smsSent
 
     });
 
@@ -863,6 +890,8 @@ ${deliveryNote(deliveryZone)}`,
       }
     }
 
+    const smsSent = await sendEzzyOrderSms({ type: 'bog', phone: req.body.phone, draftOrderId: draftOrder.id });
+
     return res.json({
 
       draftOrderId:
@@ -870,6 +899,7 @@ ${deliveryNote(deliveryZone)}`,
 
       redirectUrl:
         bogResponse.data.redirectUrl,
+      smsSent,
 
       orderId:
         bogOrderId
@@ -1325,6 +1355,8 @@ if (bogOrderId) {
   }
 }
 
+const smsSent = await sendEzzyOrderSms({ type: 'bogPart', phone: req.body.phone, draftOrderId: draftOrder.id });
+
 return res.json({
 
   draftOrderId:
@@ -1332,6 +1364,7 @@ return res.json({
 
   redirectUrl:
     bogResponse.data.redirectUrl,
+  smsSent,
 
   orderId:
     bogOrderId
@@ -2258,10 +2291,19 @@ app.post('/api/keepz-callback', async (req, res) => {
       sourceUrl: 'https://ezzy.ge/'
     });
 
+    const smsSent = pending?.smsSentAt
+      ? true
+      : await sendEzzyOrderSms({
+          type: 'card',
+          phone: savedOrder.customer?.phone,
+          draftOrderId: draft.id,
+        });
+
     pendingOrders[integratorOrderId] = {
       ...savedOrder,
       draftOrderId: draft.id,
       shopifyOrderId: completedDraft.order_id,
+      smsSentAt: smsSent ? (pending?.smsSentAt || Date.now()) : undefined,
       completedAt: Date.now()
     };
 
@@ -2855,6 +2897,8 @@ ${deliveryNote(deliveryZone)}`,
       }
     }
 
+    const smsSent = await sendEzzyOrderSms({ type: 'tbc', phone: req.body.phone, draftOrderId: draftOrder.id });
+
     return res.json({
 
       draftOrderId:
@@ -2863,7 +2907,8 @@ ${deliveryNote(deliveryZone)}`,
       sessionId,
 
       redirectUrl:
-        tbcResponse.data.redirectUrl
+        tbcResponse.data.redirectUrl,
+      smsSent
 
     });
 
@@ -2973,6 +3018,8 @@ ${deliveryNote(deliveryZone)}`,
       }
     }
 
+    const smsSent = await sendEzzyOrderSms({ type: 'tbc', phone: req.body.phone, draftOrderId: draftOrder.id });
+
     return res.json({
 
       draftOrderId:
@@ -2982,7 +3029,8 @@ ${deliveryNote(deliveryZone)}`,
         sessionId,
 
       redirectUrl:
-        tbcResponse.data.redirectUrl
+        tbcResponse.data.redirectUrl,
+      smsSent
 
     });
 
@@ -3091,6 +3139,8 @@ ${deliveryNote(deliveryZone)}`,
       }
     }
 
+    const smsSent = await sendEzzyOrderSms({ type: 'credo', phone: req.body.phone, draftOrderId: draftOrder.id });
+
     return res.json({
 
       draftOrderId:
@@ -3099,7 +3149,8 @@ ${deliveryNote(deliveryZone)}`,
       orderCode,
 
       redirectUrl:
-        credoResponse.data.redirectUrl
+        credoResponse.data.redirectUrl,
+      smsSent
 
     });
 
@@ -3202,6 +3253,9 @@ Address: ${req.body.address}`,
 });
 
 orderTracker(app, {
+  smsOffice,
+  trackerSessionSecret: process.env.TRACKER_SESSION_SECRET,
+  otpText: process.env.SMSOFFICE_TEXT_OTP,
   tbcApiKey: TBC_API_KEY_EZZY,
   tbcApiSecret: TBC_API_SECRET_EZZY,
   tbcMerchantKey: TBC_MERCHANT_EZZY,
