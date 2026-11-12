@@ -11,6 +11,7 @@ const {
   deliveryTag,
   draftShippingLine,
   normalizeDeliveryZone,
+  productsWithCredoDelivery,
   productsWithDelivery,
 } = require('./installment-delivery');
 
@@ -312,7 +313,7 @@ async function createBogCheckoutForStore({
 
 app.post('/api/credo-order', async (req, res) => {
   try {
-    const products = productsWithDelivery(req.body.products, req.body.delivery_zone);
+    const products = productsWithCredoDelivery(req.body.products, req.body.delivery_zone);
     const orderCode = 'ORD_' + Date.now();
 
     const formattedProducts = products.map(p => ({
