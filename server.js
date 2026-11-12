@@ -18,6 +18,7 @@ const {
 
 const app = express();
 const pendingOrders = {};
+const BANK_SMS_SENT_TAG = 'EZZY-BANK-SMS-SENT';
 const smsOffice = createSmsOfficeClient({
   apiKey: process.env.SMSOFFICE_API_KEY,
   sender: process.env.SMSOFFICE_SENDER,
@@ -890,8 +891,6 @@ ${deliveryNote(deliveryZone)}`,
       }
     }
 
-    const smsSent = await sendEzzyOrderSms({ type: 'bog', phone: req.body.phone, draftOrderId: draftOrder.id });
-
     return res.json({
 
       draftOrderId:
@@ -899,7 +898,7 @@ ${deliveryNote(deliveryZone)}`,
 
       redirectUrl:
         bogResponse.data.redirectUrl,
-      smsSent,
+      smsSent: false,
 
       orderId:
         bogOrderId
@@ -1355,8 +1354,6 @@ if (bogOrderId) {
   }
 }
 
-const smsSent = await sendEzzyOrderSms({ type: 'bogPart', phone: req.body.phone, draftOrderId: draftOrder.id });
-
 return res.json({
 
   draftOrderId:
@@ -1364,7 +1361,7 @@ return res.json({
 
   redirectUrl:
     bogResponse.data.redirectUrl,
-  smsSent,
+  smsSent: false,
 
   orderId:
     bogOrderId
@@ -1588,6 +1585,14 @@ app.post('/api/bog-installment-callback', async (req, res) => {
       `BOG-STATUS-${orderStatus.replace(/_/g, '-')}`.toUpperCase(),
       `BOG-INSTALLMENT-STATUS-${installmentStatus.replace(/_/g, '-')}`.toUpperCase()
     );
+    const callbackWasSuccessful = orderStatus === 'success' || installmentStatus === 'success';
+    const bankSmsWasSent = statusTags.some((tag) => tag.toUpperCase() === BANK_SMS_SENT_TAG);
+    if (!isComfortmixOrder && callbackWasSuccessful && !bankSmsWasSent) {
+      const phone = draftOrder.shipping_address?.phone || draftOrder.customer?.phone || '';
+      const smsType = shopOrderMatch[1] === 'BNPL' ? 'bogPart' : 'bog';
+      const smsSent = await sendEzzyOrderSms({ type: smsType, phone, draftOrderId: draftId });
+      if (smsSent) statusTags.push(BANK_SMS_SENT_TAG);
+    }
 
     await axios.put(
       `https://${targetShop}/admin/api/2024-01/draft_orders/${draftId}.json`,
@@ -2897,8 +2902,6 @@ ${deliveryNote(deliveryZone)}`,
       }
     }
 
-    const smsSent = await sendEzzyOrderSms({ type: 'tbc', phone: req.body.phone, draftOrderId: draftOrder.id });
-
     return res.json({
 
       draftOrderId:
@@ -2908,7 +2911,7 @@ ${deliveryNote(deliveryZone)}`,
 
       redirectUrl:
         tbcResponse.data.redirectUrl,
-      smsSent
+      smsSent: false
 
     });
 
@@ -3018,8 +3021,6 @@ ${deliveryNote(deliveryZone)}`,
       }
     }
 
-    const smsSent = await sendEzzyOrderSms({ type: 'tbc', phone: req.body.phone, draftOrderId: draftOrder.id });
-
     return res.json({
 
       draftOrderId:
@@ -3030,7 +3031,7 @@ ${deliveryNote(deliveryZone)}`,
 
       redirectUrl:
         tbcResponse.data.redirectUrl,
-      smsSent
+      smsSent: false
 
     });
 
@@ -3139,8 +3140,6 @@ ${deliveryNote(deliveryZone)}`,
       }
     }
 
-    const smsSent = await sendEzzyOrderSms({ type: 'credo', phone: req.body.phone, draftOrderId: draftOrder.id });
-
     return res.json({
 
       draftOrderId:
@@ -3150,7 +3149,7 @@ ${deliveryNote(deliveryZone)}`,
 
       redirectUrl:
         credoResponse.data.redirectUrl,
-      smsSent
+      smsSent: false
 
     });
 

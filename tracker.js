@@ -15,6 +15,7 @@ const rateLimits = new Map();
 const adminRateLimits = new Map();
 const loginRequestLimits = new Map();
 const loginVerifyLimits = new Map();
+const bankSmsNotifications = new Set();
 let accessToken = null;
 let tokenExpiresAt = 0;
 
@@ -263,6 +264,7 @@ const BOG_STATUS_LABELS = {
   unknown: 'განაცხადი მუშავდება',
 };
 const BOG_ORDER_ID_PATTERN = /^[A-Za-z0-9_-]{20,100}$/;
+const BANK_SMS_SENT_TAG = 'EZZY-BANK-SMS-SENT';
 
 const CREDO_STATUS_MIN_AGE_MS = 30 * 60 * 1000;
 const CREDO_STATUS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -452,6 +454,10 @@ async function enrichBogStatuses(records, bankConfig) {
           record.applicationStatusId = result.statusId;
           record.applicationStatus = result.status;
           record.applicationStatusCheckedAt = new Date().toISOString();
+          if (result.statusId === 'success') {
+            const smsType = record.provider === 'BOG_BNPL' ? 'bogPart' : 'bog';
+            await sendSuccessfulBankSms(record, smsType, bankConfig);
+          }
         }
       } catch (error) {
         console.error('BOG AUTO STATUS ERROR:', error.response?.status || error.message);
@@ -575,6 +581,27 @@ async function fetchTbcStatus(sessionId, bankConfig, options = {}) {
   return result;
 }
 
+async function sendSuccessfulBankSms(record, type, bankConfig) {
+  const draftId = String(record?.id || '').match(/^gid:\/\/shopify\/DraftOrder\/(\d+)$/)?.[1];
+  const phone = record?.customer?.phone || '';
+  const tags = Array.isArray(record?.tags) ? record.tags.map((tag) => String(tag).trim()).filter(Boolean) : [];
+  if (!draftId || !phone || tags.some((tag) => tag.toUpperCase() === BANK_SMS_SENT_TAG) || bankSmsNotifications.has(draftId)) {
+    return false;
+  }
+  const result = await bankConfig?.smsOffice?.sendOrderMessage({ type, phone, draftOrderId: draftId });
+  if (!result?.sent) return false;
+
+  bankSmsNotifications.add(draftId);
+  const updatedTags = [...new Set([...tags, BANK_SMS_SENT_TAG])];
+  await axios.put(
+    `https://${SHOP}/admin/api/2024-01/draft_orders/${draftId}.json`,
+    { draft_order: { id: draftId, tags: updatedTags.join(',') } },
+    { headers: { 'X-Shopify-Access-Token': await getAccessToken(), 'Content-Type': 'application/json' } },
+  );
+  record.tags = updatedTags;
+  return true;
+}
+
 function tbcStatusCheckIsDue(record, now = Date.now()) {
   if (record?.provider !== 'TBC' || !record.applicationSessionId) return false;
   const createdAt = new Date(record.createdAt).getTime();
@@ -599,6 +626,7 @@ async function enrichTbcStatuses(records, bankConfig) {
           record.applicationFinancedAmount = result.financedAmount;
           record.applicationContributionAmount = result.contributionAmount;
           record.applicationStatusCheckedAt = new Date().toISOString();
+          if (result.statusId === 8) await sendSuccessfulBankSms(record, 'tbc', bankConfig);
         }
       } catch (error) {
         console.error('TBC AUTO STATUS ERROR:', error.response?.status || error.message);
@@ -682,6 +710,7 @@ async function enrichCredoStatuses(records, bankConfig) {
           record.applicationStatusId = result.statusId;
           record.applicationStatus = result.status;
           record.applicationStatusCheckedAt = new Date().toISOString();
+          if (result.statusId === 12) await sendSuccessfulBankSms(record, 'credo', bankConfig);
         }
       } catch (error) {
         console.error('CREDO AUTO STATUS ERROR:', error.response?.status || error.message);
