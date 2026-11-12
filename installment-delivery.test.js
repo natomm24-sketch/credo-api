@@ -8,6 +8,7 @@ const {
   deliveryTag,
   draftShippingLine,
   normalizeDeliveryZone,
+  productsWithCredoDelivery,
   productsWithDelivery,
   totalWithDeliveryFallback,
 } = require('./installment-delivery');
@@ -64,6 +65,32 @@ test('rejects unknown delivery zones instead of trusting a client fee', () => {
 });
 
 
+
+test('merges delivery into the Credo product price in tetri', () => {
+  assert.deepEqual(
+    productsWithCredoDelivery(
+      [{ id: 1, title: 'Shoe', amount: 1, price: 14900 }],
+      'tbilisi',
+    ),
+    [{ id: 1, title: 'Shoe', amount: 1, price: 15700 }],
+  );
+});
+
+test('charges Credo delivery once when every product quantity is greater than one', () => {
+  const products = productsWithCredoDelivery(
+    [
+      { id: 1, title: 'Shoe', amount: 2, price: 14900 },
+      { id: 'DELIVERY_REGION', title: 'Fake delivery', amount: 1, price: 1 },
+    ],
+    'region',
+  );
+
+  assert.deepEqual(products, [
+    { id: 1, title: 'Shoe', amount: 1, price: 16000 },
+    { id: 1, title: 'Shoe', amount: 1, price: 14900 },
+  ]);
+  assert.equal(products.reduce((sum, product) => sum + product.price * product.amount, 0), 30900);
+});
 
 test('keeps Shopify total when its shipping total is already present', () => {
   const total = { amount: '157.00', currencyCode: 'GEL' };
