@@ -285,11 +285,18 @@ function detectProvider(tags, note) {
   const text = `${Array.isArray(tags) ? tags.join(' ') : tags || ''} ${note || ''}`.toLocaleUpperCase('ka-GE');
   if (text.includes('TBC')) return 'TBC';
   if (text.includes('CREDO')) return 'CREDO';
-  if (text.includes('კურიერთან') || text.includes('CASH ON DELIVERY') || /\bCOD\b/.test(text)) return 'COD';
   if (text.includes('KEEPZ')) return 'KEEPZ';
+  if (text.includes('კურიერთან') || text.includes('CASH ON DELIVERY') || /\bCOD\b/.test(text)) return 'COD';
   if (text.includes('BOG-BNPL')) return 'BOG_BNPL';
   if (text.includes('BOG')) return 'BOG';
   return 'OTHER';
+}
+
+function isPendingCourierAdvance(record) {
+  const tags = Array.isArray(record?.tags)
+    ? record.tags
+    : String(record?.tags || '').split(',');
+  return tags.some((tag) => String(tag).trim().toUpperCase() === 'COURIER-ADVANCE-PENDING');
 }
 
 function extractApplicationMeta(tags, note, provider, fallbackStatus) {
@@ -733,9 +740,10 @@ async function phoneHasOrders(phone) {
   const search = phoneSearch(phone);
   const [orders, drafts] = await Promise.all([
     graphql(`query AccountOrderExists($search: String!) { orders(first: 1, query: $search) { nodes { id } } }`, { search }),
-    graphql(`query AccountDraftExists($search: String!) { draftOrders(first: 1, query: $search) { nodes { id } } }`, { search }).catch(() => ({ draftOrders: { nodes: [] } })),
+    graphql(`query AccountDraftExists($search: String!) { draftOrders(first: 50, query: $search) { nodes { id tags } } }`, { search }).catch(() => ({ draftOrders: { nodes: [] } })),
   ]);
-  return Boolean(orders.orders?.nodes?.length || drafts.draftOrders?.nodes?.length);
+  const visibleDraftExists = (drafts.draftOrders?.nodes || []).some((draft) => !isPendingCourierAdvance(draft));
+  return Boolean(orders.orders?.nodes?.length || visibleDraftExists);
 }
 
 async function findOrdersByPhone(phone, bankConfig) {
@@ -799,7 +807,9 @@ async function findOrdersByPhone(phone, bankConfig) {
       url: info.url || null,
     }))),
   }));
-  const drafts = (draftData.draftOrders?.nodes || []).filter(matchesPhone).map((draft) => {
+  const drafts = (draftData.draftOrders?.nodes || [])
+    .filter((draft) => matchesPhone(draft) && !isPendingCourierAdvance(draft))
+    .map((draft) => {
     const provider = detectProvider(draft.tags, draft.note2);
     return {
       kind: 'draft',
@@ -987,7 +997,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
           ),
         }));
       const drafts = (draftData.draftOrders?.nodes || [])
-        .filter(matchesCustomer)
+        .filter((draft) => matchesCustomer(draft) && !isPendingCourierAdvance(draft))
         .map((draft) => {
           const provider = detectProvider(draft.tags, draft.note2);
           const applicationMeta = extractApplicationMeta(draft.tags, draft.note2, provider, '');
@@ -1063,7 +1073,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
 
     try {
       const data = await graphql(orderQuery, { search: search || null });
-      const orders = (data.orders?.nodes || []).map((order) => {
+      const orders = (data.orders?.nodes || []).filter((order) => !isPendingCourierAdvance(order)).map((order) => {
         const provider = detectProvider(order.tags, order.note);
         return ({
         id: order.id,
@@ -1113,7 +1123,9 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
       let draftWarning = null;
       try {
         const draftData = await graphql(draftQuery, { search: search || null });
-        drafts = (draftData.draftOrders?.nodes || []).map((draft) => {
+        drafts = (draftData.draftOrders?.nodes || [])
+          .filter((draft) => !isPendingCourierAdvance(draft))
+          .map((draft) => {
           const provider = detectProvider(draft.tags, draft.note2);
           return {
             id: draft.id,
