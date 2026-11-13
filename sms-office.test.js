@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
+  BANK_APPROVED_TEXT,
   SMS_OFFICE_ENDPOINT,
   createSmsOfficeClient,
   normalizeGeorgianMobile,
@@ -105,6 +106,31 @@ test('turns the order tracker domain into a clickable HTTPS link', async () => {
 
   assert.equal(submittedMessages[0], 'EZZY: მიწოდება 8₾ გადახდილია. დეტალები: https://order.ezzy.ge');
   assert.equal(submittedMessages[1], 'EZZY: გადახდილია. დეტალები: https://order.ezzy.ge');
+});
+
+test('uses one short approved message for every installment provider', async () => {
+  const submittedMessages = [];
+  const client = createSmsOfficeClient({
+    apiKey: 'secret-key',
+    sender: 'ezzy.ge',
+    texts: {
+      bog: 'old bog text',
+      bogPart: 'old bog part text',
+      tbc: 'old tbc text',
+      credo: 'old credo text',
+    },
+    request: async (_url, body) => {
+      submittedMessages.push(new URLSearchParams(body).get('content'));
+      return { Success: true };
+    },
+  });
+
+  for (const type of ['bog', 'bogPart', 'tbc', 'credo']) {
+    await client.sendOrderMessage({ type, phone: '555123456' });
+  }
+
+  assert.deepEqual(submittedMessages, Array(4).fill(BANK_APPROVED_TEXT));
+  assert.equal([...BANK_APPROVED_TEXT].length <= 70, true);
 });
 
 test('sends a one-time login code with runtime content', async () => {

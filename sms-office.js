@@ -1,4 +1,5 @@
 const SMS_OFFICE_ENDPOINT = 'https://smsoffice.ge/api/v2/send/';
+const BANK_APPROVED_TEXT = 'EZZY: განვადება დამტკიცებულია. შეკვეთა: https://order.ezzy.ge';
 
 function normalizeGeorgianMobile(value) {
   let digits = String(value || '').replace(/\D/g, '');
@@ -75,9 +76,12 @@ function createSmsOfficeClient({ apiKey, sender, texts = {}, request = defaultRe
   }
 
   async function sendOrderMessage({ type, phone, draftOrderId, variables = {} }) {
+    const template = ['bog', 'bogPart', 'tbc', 'credo'].includes(type)
+      ? BANK_APPROVED_TEXT
+      : String(texts[type] || '');
     const content = Object.entries(variables).reduce(
       (message, [name, value]) => message.replaceAll(`{${name}}`, String(value)),
-      String(texts[type] || ''),
+      template,
     ).replace(/(^|[^/])order\.ezzy\.ge/gi, '$1https://order.ezzy.ge');
     return sendMessage({ phone, content, reference: smsReference(draftOrderId) });
   }
@@ -86,6 +90,7 @@ function createSmsOfficeClient({ apiKey, sender, texts = {}, request = defaultRe
 }
 
 module.exports = {
+  BANK_APPROVED_TEXT,
   SMS_OFFICE_ENDPOINT,
   createSmsOfficeClient,
   normalizeGeorgianMobile,
