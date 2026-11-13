@@ -55,6 +55,14 @@ function draftDeliveryFields(value) {
   return shippingLine ? { shipping_line: shippingLine } : {};
 }
 
+function keepzDeliveryZone(body) {
+  const explicitZone = normalizeDeliveryZone(body?.delivery_zone);
+  if (explicitZone) return explicitZone;
+
+  const address = String(body?.customer?.address || body?.address || '').toLocaleLowerCase('ka-GE');
+  return address.includes('თბილის') || address.includes('tbilisi') ? 'tbilisi' : 'region';
+}
+
 function installmentDeliveryError(res, error) {
   if (error?.code !== 'INVALID_DELIVERY_ZONE') return false;
   res.status(400).json({ error: 'Invalid delivery zone' });
@@ -1956,13 +1964,16 @@ app.post('/api/keepz-order', async (req, res) => {
     console.log("REQ BODY:", req.body);
 
     const products = Array.isArray(req.body.products) ? req.body.products : [];
+    const customer = req.body.customer || {};
+    const deliveryZone = keepzDeliveryZone(req.body);
+    const delivery = deliveryDetails(deliveryZone);
 
     if (!products.length) {
       return res.status(400).json({ error: "No products" });
     }
 
     // 🔒 თანხის დაცული გამოთვლა backend-ზე
-    let total = 0;
+    let productTotal = 0;
     const trustedProducts = [];
 
 for (const p of products) {
@@ -1979,7 +1990,7 @@ for (const p of products) {
   const realPrice = Number(shopifyRes.data.variant.price);
   const quantity = Number(p.amount) || 1;
 
-  total += realPrice * quantity;
+  productTotal += realPrice * quantity;
   trustedProducts.push({
     id: Number(p.id),
     quantity,
@@ -1987,7 +1998,7 @@ for (const p of products) {
   });
 }
 
-const amount = Number(total.toFixed(2));
+const amount = Number((productTotal + delivery.fee).toFixed(2));
 const orderId = uuidv4();
 
     if (!amount || isNaN(amount)) {
@@ -2010,24 +2021,31 @@ const draftOrderResponse = await axios.post(
   },
 
   shipping_address: {
-    first_name: req.body.customer?.name || "Customer",
-    phone: req.body.customer?.phone || "",
+    first_name: customer.name || "Customer",
+    address1: customer.address || "",
+    phone: customer.phone || "",
     country: "Georgia"
   },
 
+  ...draftDeliveryFields(delivery.zone),
+
   note: `KEEPZ
 
-Name: ${req.body.customer?.name || ''}
-Phone: ${req.body.customer?.phone || ''}
+Name: ${customer.name || ''}
+Phone: ${customer.phone || ''}
+Address: ${customer.address || ''}
 Keepz Order ID: ${orderId}
-Keepz Amount: ${amount.toFixed(2)} GEL`,
+Keepz Amount: ${amount.toFixed(2)} GEL
+${deliveryNote(delivery.zone)}`,
 
   note_attributes: [
     { name: "keepz_order_id", value: orderId },
-    { name: "keepz_amount", value: amount.toFixed(2) }
+    { name: "keepz_amount", value: amount.toFixed(2) },
+    { name: "delivery_zone", value: delivery.zone },
+    { name: "delivery_fee", value: delivery.fee.toFixed(2) }
   ],
 
-    tags: `KEEPZ, KZ:${orderId}`,
+    tags: `KEEPZ, KZ:${orderId}, ${deliveryTag(delivery.zone)}`,
 
    use_customer_default_address: false
     }
@@ -2050,9 +2068,12 @@ console.log(
 );
 
 pendingOrders[orderId] = {
-  customer: req.body.customer,
+  customer,
   products: trustedProducts,
   amount,
+  productTotal: Number(productTotal.toFixed(2)),
+  deliveryZone: delivery.zone,
+  deliveryFee: delivery.fee,
   draftOrderId: draftOrderResponse.data.draft_order.id,
   createdAt: Date.now()
 };
@@ -2130,6 +2151,7 @@ return res.json({
 
   } catch (err) {
     console.error("KEEPZ ERROR:", err.response?.data || err.message);
+    if (installmentDeliveryError(res, err)) return;
     return res.status(500).json({
       error: err.response?.data || err.message
     });

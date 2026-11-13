@@ -29,6 +29,26 @@ test('Ezzy Keepz uses isolated new-company credentials and preserves routing', (
   assert.match(orderRoute, /https:\/\/api\.ezzy\.ge\/api\/keepz-callback/);
 });
 
+test('Ezzy Keepz card payment includes server-priced delivery without changing callback events', () => {
+  const orderRoute = source.slice(
+    source.indexOf("app.post('/api/keepz-order'"),
+    source.indexOf("app.post('/api/keepz-courier-order'"),
+  );
+  const callbackRoute = source.slice(
+    source.indexOf("app.post('/api/keepz-callback'"),
+    source.indexOf("app.post('/api/keepz-success'"),
+  );
+
+  assert.match(source, /function keepzDeliveryZone\(body\)/);
+  assert.match(orderRoute, /const deliveryZone = keepzDeliveryZone\(req\.body\)/);
+  assert.match(orderRoute, /const amount = Number\(\(productTotal \+ delivery\.fee\)\.toFixed\(2\)\)/);
+  assert.match(orderRoute, /\.\.\.draftDeliveryFields\(delivery\.zone\)/);
+  assert.match(orderRoute, /deliveryTag\(delivery\.zone\)/);
+  assert.match(orderRoute, /delivery_fee['"], value: delivery\.fee\.toFixed\(2\)/);
+  assert.match(callbackRoute, /markKeepzDraftSuccessful/);
+  assert.match(callbackRoute, /if \(paymentType === 'card'\) \{[\s\S]*?sendMetaPurchase/);
+});
+
 test('courier Keepz charges only server-priced delivery and preserves callback safety', () => {
   const courierRoute = source.slice(
     source.indexOf("app.post('/api/keepz-courier-order'"),
