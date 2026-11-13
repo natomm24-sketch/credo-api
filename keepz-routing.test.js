@@ -25,7 +25,7 @@ test('Ezzy Keepz uses isolated new-company credentials and preserves routing', (
   assert.match(callbackRoute, /receiverId\s*!==\s*KEEPZ_RECEIVER_ID_EZZY/);
 
   assert.match(orderRoute, /https:\/\/ezzy\.ge\/pages\/payment-success\?orderId=/);
-  assert.match(orderRoute, /https:\/\/ezzy\.ge\/payment-fail/);
+  assert.match(orderRoute, /https:\/\/ezzy\.ge\/pages\/payment-fail/);
   assert.match(orderRoute, /https:\/\/api\.ezzy\.ge\/api\/keepz-callback/);
 });
 
@@ -63,6 +63,7 @@ test('courier Keepz charges only server-priced delivery and preserves callback s
   assert.match(courierRoute, /const amount = Number\(delivery\.fee\.toFixed\(2\)\)/);
   assert.match(courierRoute, /keepz_payment_type['"], value: 'courier'/);
   assert.match(courierRoute, /successRedirectUri:[\s\S]*mode=courier/);
+  assert.match(courierRoute, /failRedirectUri: 'https:\/\/ezzy\.ge\/pages\/payment-fail'/);
   assert.match(courierRoute, /callbackUri: 'https:\/\/api\.ezzy\.ge\/api\/keepz-callback'/);
   assert.doesNotMatch(courierRoute, /sendMetaPurchase/);
 
