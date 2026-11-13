@@ -93,8 +93,21 @@ test('courier advances stay categorized as courier while Keepz card payments rem
   assert.match(trackerSource, /function isPendingCourierAdvance/);
   assert.match(trackerSource, /COURIER-ADVANCE-PENDING/);
   assert.match(trackerSource, /matchesPhone\(draft\) && !isPendingCourierAdvance\(draft\)/);
-  assert.match(trackerSource, /matchesCustomer\(draft\) && !isPendingCourierAdvance\(draft\)/);
+  assert.match(trackerSource, /matchesPhone\(draft\) && !isPendingCourierAdvance\(draft\)/);
   assert.match(trackerSource, /filter\(\(draft\) => !isPendingCourierAdvance\(draft\)\)/);
+});
+
+test('public order tracking requires only the customer phone number', () => {
+  const trackerSource = fs.readFileSync(path.join(__dirname, 'tracker.js'), 'utf8');
+  const publicTrackerRoute = trackerSource.slice(
+    trackerSource.indexOf("app.post('/api/track-order'"),
+    trackerSource.indexOf("app.get('/api/admin/orders'"),
+  );
+
+  assert.match(publicTrackerRoute, /const phone = normalizePhone\(req\.body\?\.phone\)/);
+  assert.match(publicTrackerRoute, /\.filter\(matchesPhone\)/);
+  assert.doesNotMatch(publicTrackerRoute, /req\.body\?\.(?:firstName|lastName)/);
+  assert.doesNotMatch(publicTrackerRoute, /nameMatches|expectedFullName/);
 });
 
 test('Comfortmix Keepz remains on the existing credential set', () => {

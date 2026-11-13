@@ -920,12 +920,10 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
       return res.status(429).json({ error: 'ძალიან ბევრი მცდელობაა. გთხოვთ, რამდენიმე წუთში თავიდან სცადოთ.' });
     }
 
-    const firstName = normalizeName(req.body?.firstName);
-    const lastName = normalizeName(req.body?.lastName);
     const phone = normalizePhone(req.body?.phone);
 
-    if (firstName.length < 2 || firstName.length > 50 || lastName.length < 2 || lastName.length > 50 || !phone) {
-      return res.status(400).json({ error: 'შეავსეთ სახელი, გვარი და ქართული მობილურის ნომერი.' });
+    if (!phone) {
+      return res.status(400).json({ error: 'შეიყვანეთ ქართული მობილურის ნომერი.' });
     }
 
     const search = [`"+995${phone}"`, `"995${phone}"`, `"${phone}"`].join(' OR ');
@@ -935,9 +933,9 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
           nodes {
             name createdAt displayFinancialStatus displayFulfillmentStatus
             totalPriceSet { shopMoney { amount currencyCode } }
-            customer { firstName lastName phone }
-            shippingAddress { firstName lastName phone }
-            billingAddress { firstName lastName phone }
+            customer { phone }
+            shippingAddress { phone }
+            billingAddress { phone }
             lineItems(first: 20) { nodes { name quantity variantTitle image { url altText } variant { product { handle onlineStoreUrl } } } }
             fulfillments { status trackingInfo(first: 10) { company number url } }
           }
@@ -950,8 +948,8 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
           nodes {
             name createdAt status tags note2
             totalPriceSet { shopMoney { amount currencyCode } }
-            customer { firstName lastName phone }
-            shippingAddress { firstName lastName phone }
+            customer { phone }
+            shippingAddress { phone }
             lineItems(first: 20) { nodes { name quantity variantTitle image { url altText } variant { product { handle onlineStoreUrl } } } }
           }
         }
@@ -966,20 +964,12 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
           return { draftOrders: { nodes: [] } };
         }),
       ]);
-      const expectedFullName = `${firstName} ${lastName}`;
-      const matchesCustomer = (record) => {
+      const matchesPhone = (record) => {
         const contacts = [record.customer, record.shippingAddress, record.billingAddress].filter(Boolean);
-        const phoneMatches = contacts.some((contact) => normalizePhone(contact.phone) === phone);
-        const nameMatches = contacts.some((contact) => {
-          const contactFirst = normalizeName(contact.firstName);
-          const contactLast = normalizeName(contact.lastName);
-          const contactFull = normalizeName(`${contactFirst} ${contactLast}`);
-          return (contactFirst === firstName && contactLast === lastName) || contactFirst === expectedFullName || contactFull === expectedFullName;
-        });
-        return phoneMatches && nameMatches;
+        return contacts.some((contact) => normalizePhone(contact.phone) === phone);
       };
       const orders = (data.orders?.nodes || [])
-        .filter(matchesCustomer)
+        .filter(matchesPhone)
         .map((order) => ({
           kind: 'order',
           number: order.name,
@@ -1004,7 +994,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
           ),
         }));
       const drafts = (draftData.draftOrders?.nodes || [])
-        .filter((draft) => matchesCustomer(draft) && !isPendingCourierAdvance(draft))
+        .filter((draft) => matchesPhone(draft) && !isPendingCourierAdvance(draft))
         .map((draft) => {
           const provider = detectProvider(draft.tags, draft.note2);
           const applicationMeta = extractApplicationMeta(draft.tags, draft.note2, provider, '');
