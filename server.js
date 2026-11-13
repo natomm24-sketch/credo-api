@@ -2091,7 +2091,7 @@ pendingOrders[orderId] = {
       // 🔥 redirect-ები დალაგებული
       successRedirectUri:
 `https://ezzy.ge/pages/payment-success?orderId=${orderId}&amount=${amount}&productId=${req.body.products[0].id}`,
-      failRedirectUri: `https://ezzy.ge/payment-fail`,
+      failRedirectUri: `https://ezzy.ge/pages/payment-fail`,
 
       // 🔥 KEEPZ callback
       callbackUri: "https://api.ezzy.ge/api/keepz-callback"
@@ -2239,7 +2239,7 @@ app.post('/api/keepz-courier-order', async (req, res) => {
       directLinkProvider: 'DEFAULT',
       language: 'KA',
       successRedirectUri: `https://ezzy.ge/pages/payment-success?orderId=${orderId}&mode=courier`,
-      failRedirectUri: 'https://ezzy.ge/payment-fail',
+      failRedirectUri: 'https://ezzy.ge/pages/payment-fail',
       callbackUri: 'https://api.ezzy.ge/api/keepz-callback',
     });
     const response = await axios.post(
