@@ -317,7 +317,7 @@ function extractApplicationMeta(tags, note, provider, fallbackStatus) {
 
   let applicationStatus = fallbackStatus || 'განაცხადი შექმნილია';
   if (provider === 'COD') applicationStatus = isCourierAdvance
-    ? (keepzSuccessful ? 'წინასწარი გადახდა — გადახდილია' : 'წინასწარი გადახდა მუშავდება')
+    ? (keepzSuccessful ? 'მიწოდება-გადახდილია' : 'წინასწარი გადახდა მუშავდება')
     : 'კურიერთან გადახდა';
   if (provider === 'TBC' && tbcStatusId !== null) applicationStatus = TBC_STATUS_LABELS[tbcStatusId] || `სტატუსი ${tbcStatusId}`;
   if (provider === 'CREDO' && credoStatusId !== null) applicationStatus = CREDO_STATUS_LABELS[credoStatusId] || `Credo სტატუსი ${credoStatusId}`;

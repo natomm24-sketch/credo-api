@@ -89,7 +89,7 @@ test('courier advances stay categorized as courier while Keepz card payments rem
   );
 
   assert.ok(providerRoute.indexOf("text.includes('COURIER-ADVANCE-')") < providerRoute.indexOf("text.includes('KEEPZ')"));
-  assert.match(trackerSource, /წინასწარი გადახდა — გადახდილია/);
+  assert.match(trackerSource, /მიწოდება-გადახდილია/);
   assert.match(trackerSource, /function isPendingCourierAdvance/);
   assert.match(trackerSource, /COURIER-ADVANCE-PENDING/);
   assert.match(trackerSource, /matchesPhone\(draft\) && !isPendingCourierAdvance\(draft\)/);
