@@ -58,6 +58,21 @@ test('Keepz success is persisted for order-admin status display', () => {
   assert.match(trackerSource, /keepzSuccessful \? 'success' : 'in_progress'/);
 });
 
+test('unpaid courier advances stay hidden and successful Keepz wins over COD', () => {
+  const trackerSource = fs.readFileSync(path.join(__dirname, 'tracker.js'), 'utf8');
+  const providerRoute = trackerSource.slice(
+    trackerSource.indexOf('function detectProvider'),
+    trackerSource.indexOf('function extractApplicationMeta'),
+  );
+
+  assert.ok(providerRoute.indexOf("text.includes('KEEPZ')") < providerRoute.indexOf("return 'COD'"));
+  assert.match(trackerSource, /function isPendingCourierAdvance/);
+  assert.match(trackerSource, /COURIER-ADVANCE-PENDING/);
+  assert.match(trackerSource, /matchesPhone\(draft\) && !isPendingCourierAdvance\(draft\)/);
+  assert.match(trackerSource, /matchesCustomer\(draft\) && !isPendingCourierAdvance\(draft\)/);
+  assert.match(trackerSource, /filter\(\(draft\) => !isPendingCourierAdvance\(draft\)\)/);
+});
+
 test('Comfortmix Keepz remains on the existing credential set', () => {
   const comfortRoute = source.slice(
     source.indexOf("app.post('/api/keepz-order-comfortmix'"),
