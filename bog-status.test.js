@@ -30,10 +30,13 @@ test('maps documented BOG installment statuses', () => {
   assert.equal(parseBogStatusPayload({ status: 'error', installment_status: 'fail' }).status, 'განაცხადი ვერ დასრულდა');
 });
 
-test('uses the top-level BOG order status when fields are temporarily inconsistent', () => {
-  assert.equal(resolveBogStatusId('success', 'unknown'), 'success');
+test('uses the actual BOG installment decision when checkout and application fields differ', () => {
+  assert.equal(resolveBogStatusId('success', 'unknown'), 'unknown');
+  assert.equal(resolveBogStatusId('success', 'reject'), 'reject');
+  assert.equal(resolveBogStatusId('in_progress', 'success'), 'success');
   assert.equal(resolveBogStatusId('error', 'unknown'), 'error');
-  assert.equal(parseBogStatusPayload({ status: 'success', installment_status: 'unknown' }).status, 'დამტკიცდა');
+  assert.equal(parseBogStatusPayload({ status: 'success', installment_status: 'unknown' }).status, 'განაცხადი მუშავდება');
+  assert.equal(parseBogStatusPayload({ status: 'success', installment_status: 'reject' }).status, 'დაუარდა');
   assert.equal(parseBogStatusPayload({ status: 'error', installment_status: 'unknown' }).status, 'განაცხადი ვერ დასრულდა');
 });
 

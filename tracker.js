@@ -333,17 +333,14 @@ function resolveBogStatusId(orderStatus, installmentStatus) {
   const status = String(orderStatus || '').trim().toLowerCase();
   const installment = String(installmentStatus || '').trim().toLowerCase();
 
-  if (status === 'success') return 'success';
+  // BOG's top-level status describes the checkout request lifecycle, while
+  // installment_status contains the customer's actual application decision.
+  // Never show an application as approved from a successful checkout alone.
+  if (['success', 'reject', 'reverse_success', 'fail'].includes(installment)) return installment;
+  if (status === 'error') return 'error';
+  if (installment === 'unknown') return 'unknown';
   if (status === 'in_progress') return 'in_progress';
-  if (status === 'error') {
-    return ['reject', 'reverse_success', 'fail'].includes(installment)
-      ? installment
-      : 'error';
-  }
-
-  return ['success', 'reject', 'reverse_success', 'fail', 'unknown'].includes(installment)
-    ? installment
-    : null;
+  return status === 'success' ? 'unknown' : null;
 }
 
 function parseBogStatusPayload(payload, httpStatus = 200) {
