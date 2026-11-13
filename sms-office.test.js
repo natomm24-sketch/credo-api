@@ -85,6 +85,28 @@ test('fills courier delivery and remaining amount placeholders', async () => {
   assert.equal(submitted.get('content').includes('{'), false);
 });
 
+test('turns the order tracker domain into a clickable HTTPS link', async () => {
+  const submittedMessages = [];
+  const client = createSmsOfficeClient({
+    apiKey: 'secret-key',
+    sender: 'ezzy.ge',
+    texts: {
+      cod: 'EZZY: მიწოდება 8₾ გადახდილია. დეტალები: order.ezzy.ge',
+      card: 'EZZY: გადახდილია. დეტალები: https://order.ezzy.ge',
+    },
+    request: async (_url, body) => {
+      submittedMessages.push(new URLSearchParams(body).get('content'));
+      return { Success: true };
+    },
+  });
+
+  await client.sendOrderMessage({ type: 'cod', phone: '555123456' });
+  await client.sendOrderMessage({ type: 'card', phone: '555123456' });
+
+  assert.equal(submittedMessages[0], 'EZZY: მიწოდება 8₾ გადახდილია. დეტალები: https://order.ezzy.ge');
+  assert.equal(submittedMessages[1], 'EZZY: გადახდილია. დეტალები: https://order.ezzy.ge');
+});
+
 test('sends a one-time login code with runtime content', async () => {
   let submitted;
   const client = createSmsOfficeClient({

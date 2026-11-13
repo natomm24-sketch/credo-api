@@ -78,7 +78,7 @@ function createSmsOfficeClient({ apiKey, sender, texts = {}, request = defaultRe
     const content = Object.entries(variables).reduce(
       (message, [name, value]) => message.replaceAll(`{${name}}`, String(value)),
       String(texts[type] || ''),
-    );
+    ).replace(/(^|[^/])order\.ezzy\.ge/gi, '$1https://order.ezzy.ge');
     return sendMessage({ phone, content, reference: smsReference(draftOrderId) });
   }
 
