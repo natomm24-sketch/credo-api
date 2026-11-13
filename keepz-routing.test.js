@@ -78,17 +78,18 @@ test('Keepz success is persisted for order-admin status display', () => {
   assert.match(trackerSource, /provider === 'KEEPZ'[\s\S]*?'გადახდილია'/);
   assert.match(trackerSource, /keepzSuccessful \? 'success' : 'in_progress'/);
   assert.match(trackerSource, /app\.get\('\/api\/admin\/keepz-status'/);
-  assert.match(trackerSource, /provider === 'KEEPZ' \? keepzOrderId : bogOrderId/);
+  assert.match(trackerSource, /provider === 'KEEPZ' \|\| isCourierAdvance/);
 });
 
-test('unpaid courier advances stay hidden and successful Keepz wins over COD', () => {
+test('courier advances stay categorized as courier while Keepz card payments remain Keepz', () => {
   const trackerSource = fs.readFileSync(path.join(__dirname, 'tracker.js'), 'utf8');
   const providerRoute = trackerSource.slice(
     trackerSource.indexOf('function detectProvider'),
     trackerSource.indexOf('function extractApplicationMeta'),
   );
 
-  assert.ok(providerRoute.indexOf("text.includes('KEEPZ')") < providerRoute.indexOf("return 'COD'"));
+  assert.ok(providerRoute.indexOf("text.includes('COURIER-ADVANCE-')") < providerRoute.indexOf("text.includes('KEEPZ')"));
+  assert.match(trackerSource, /წინასწარი გადახდა — გადახდილია/);
   assert.match(trackerSource, /function isPendingCourierAdvance/);
   assert.match(trackerSource, /COURIER-ADVANCE-PENDING/);
   assert.match(trackerSource, /matchesPhone\(draft\) && !isPendingCourierAdvance\(draft\)/);

@@ -285,8 +285,8 @@ function detectProvider(tags, note) {
   const text = `${Array.isArray(tags) ? tags.join(' ') : tags || ''} ${note || ''}`.toLocaleUpperCase('ka-GE');
   if (text.includes('TBC')) return 'TBC';
   if (text.includes('CREDO')) return 'CREDO';
+  if (text.includes('COURIER-ADVANCE-') || text.includes('კურიერთან გადახდა') || text.includes('CASH ON DELIVERY') || /\bCOD\b/.test(text)) return 'COD';
   if (text.includes('KEEPZ')) return 'KEEPZ';
-  if (text.includes('კურიერთან') || text.includes('CASH ON DELIVERY') || /\bCOD\b/.test(text)) return 'COD';
   if (text.includes('BOG-BNPL')) return 'BOG_BNPL';
   if (text.includes('BOG')) return 'BOG';
   return 'OTHER';
@@ -309,13 +309,16 @@ function extractApplicationMeta(tags, note, provider, fallbackStatus) {
   const bogStatusMatch = text.match(/BOG\s+Status:\s*([a-z_]+)/i);
   const bogInstallmentStatusMatch = text.match(/BOG\s+Installment\s+Status:\s*([a-z_]+)/i);
   const keepzSuccessful = /KEEPZ-STATUS-SUCCESS|Keepz\s+Status:\s*SUCCESS/i.test(text);
+  const isCourierAdvance = provider === 'COD' && Boolean(keepzOrderId);
   const tbcStatusId = tbcStatusMatch ? Number(tbcStatusMatch[1]) : null;
   const credoStatusId = credoStatusMatch ? Number(credoStatusMatch[1]) : null;
   const credoCode = text.match(/Credo\s+Order\s+Code:\s*([\w-]+)/i)?.[1] || null;
   const bogStatusId = resolveBogStatusId(bogStatusMatch?.[1], bogInstallmentStatusMatch?.[1]);
 
   let applicationStatus = fallbackStatus || 'განაცხადი შექმნილია';
-  if (provider === 'COD') applicationStatus = 'კურიერთან გადახდა';
+  if (provider === 'COD') applicationStatus = isCourierAdvance
+    ? (keepzSuccessful ? 'წინასწარი გადახდა — გადახდილია' : 'წინასწარი გადახდა მუშავდება')
+    : 'კურიერთან გადახდა';
   if (provider === 'TBC' && tbcStatusId !== null) applicationStatus = TBC_STATUS_LABELS[tbcStatusId] || `სტატუსი ${tbcStatusId}`;
   if (provider === 'CREDO' && credoStatusId !== null) applicationStatus = CREDO_STATUS_LABELS[credoStatusId] || `Credo სტატუსი ${credoStatusId}`;
   if ((provider === 'BOG' || provider === 'BOG_BNPL') && bogStatusId) applicationStatus = BOG_STATUS_LABELS[bogStatusId] || `BOG სტატუსი: ${bogStatusId}`;
@@ -325,14 +328,14 @@ function extractApplicationMeta(tags, note, provider, fallbackStatus) {
     ? credoStatusId
     : (provider === 'BOG' || provider === 'BOG_BNPL'
       ? bogStatusId
-      : (provider === 'KEEPZ' ? (keepzSuccessful ? 'success' : 'in_progress') : tbcStatusId));
+      : ((provider === 'KEEPZ' || isCourierAdvance) ? (keepzSuccessful ? 'success' : 'in_progress') : tbcStatusId));
 
   return {
     applicationStatus,
     applicationStatusId,
     applicationSessionId: sessionId,
     applicationCode: credoCode,
-    applicationOrderId: provider === 'KEEPZ' ? keepzOrderId : bogOrderId,
+    applicationOrderId: (provider === 'KEEPZ' || isCourierAdvance) ? keepzOrderId : bogOrderId,
   };
 }
 
