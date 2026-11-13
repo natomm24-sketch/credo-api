@@ -305,6 +305,7 @@ function extractApplicationMeta(tags, note, provider, fallbackStatus) {
   const tbcStatusMatch = text.match(/TBC(?:-|\s+)STATUS(?:\s+ID)?(?:-|:|\s)+(\d{1,2})/i);
   const credoStatusMatch = text.match(/CREDO(?:-|\s+)STATUS(?:\s+ID)?(?:-|:|\s)+(\d{1,2})/i);
   const bogOrderId = text.match(/BOG\s+Order\s+ID:\s*([A-Za-z0-9_-]{20,100})/i)?.[1] || null;
+  const keepzOrderId = text.match(/Keepz\s+Order\s+ID:\s*([0-9a-f-]{36})/i)?.[1] || null;
   const bogStatusMatch = text.match(/BOG\s+Status:\s*([a-z_]+)/i);
   const bogInstallmentStatusMatch = text.match(/BOG\s+Installment\s+Status:\s*([a-z_]+)/i);
   const keepzSuccessful = /KEEPZ-STATUS-SUCCESS|Keepz\s+Status:\s*SUCCESS/i.test(text);
@@ -326,7 +327,13 @@ function extractApplicationMeta(tags, note, provider, fallbackStatus) {
       ? bogStatusId
       : (provider === 'KEEPZ' ? (keepzSuccessful ? 'success' : 'in_progress') : tbcStatusId));
 
-  return { applicationStatus, applicationStatusId, applicationSessionId: sessionId, applicationCode: credoCode, applicationOrderId: bogOrderId };
+  return {
+    applicationStatus,
+    applicationStatusId,
+    applicationSessionId: sessionId,
+    applicationCode: credoCode,
+    applicationOrderId: provider === 'KEEPZ' ? keepzOrderId : bogOrderId,
+  };
 }
 
 function resolveBogStatusId(orderStatus, installmentStatus) {
@@ -1290,6 +1297,25 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
     }
   });
 
+  app.get('/api/admin/keepz-status', async (req, res) => {
+    if (!requireAdmin(req, res)) return;
+    const orderId = String(req.query?.orderId || '').trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(orderId)) {
+      return res.status(400).json({ error: 'Keepz გადახდის ID არასწორია.' });
+    }
+    if (typeof bankConfig?.refreshKeepzPayment !== 'function') {
+      return res.status(503).json({ error: 'Keepz სტატუსის კავშირი ჯერ არ არის გამართული.' });
+    }
+
+    try {
+      const result = await bankConfig.refreshKeepzPayment(orderId);
+      return res.json({ ...result, status: result.label || (result.success ? 'გადახდილია' : 'გადახდა მუშავდება') });
+    } catch (error) {
+      console.error('KEEPZ STATUS ERROR:', error.response?.status || error.message);
+      return res.status(error.statusCode || 502).json({ error: 'Keepz-ის სტატუსის მიღება ვერ მოხერხდა.' });
+    }
+  });
+
   app.post('/api/admin/fulfill', async (req, res) => {
     if (!requireAdmin(req, res)) return;
     const fulfillmentOrderIds = Array.isArray(req.body?.fulfillmentOrderIds) ? req.body.fulfillmentOrderIds : [];
@@ -1380,3 +1406,4 @@ module.exports.statusHelpers = {
   credoStatusCheckIsDue,
   fetchCredoStatus,
 };
+

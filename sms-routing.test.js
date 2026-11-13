@@ -16,11 +16,16 @@ function route(pathname) {
 test('legacy COD and verified Keepz callbacks use their own configurable SMS', () => {
   assert.match(route('/api/create-order-and-cod-ezzy'), /sendEzzyOrderSms\(\{ type: 'cod'/);
   const callback = route('/api/keepz-callback');
-  assert.match(callback, /type: paymentType === 'courier' \? 'cod' : 'card'/);
-  assert.match(callback, /delivery_fee:[\s\S]*?remaining_amount:/);
-  assert.match(callback, /if \(paymentType === 'card'\) \{[\s\S]*?sendMetaPurchase/);
-  assert.match(callback, /paymentPending: paymentType === 'courier'/);
-  assert.match(callback, /markKeepzDraftSuccessful/);
+  const refreshStart = source.indexOf('async function refreshKeepzPayment');
+  const refreshEnd = source.indexOf("app.post('/api/keepz-callback'", refreshStart);
+  const refresh = source.slice(refreshStart, refreshEnd);
+  assert.match(callback, /refreshKeepzPayment\(integratorOrderId/);
+  assert.match(refresh, /type: paymentType === 'courier' \? 'cod' : 'card'/);
+  assert.match(refresh, /delivery_fee:[\s\S]*?remaining_amount:/);
+  assert.match(refresh, /if \(paymentType === 'card' && !wasSuccessful\) \{[\s\S]*?sendMetaPurchase/);
+  assert.match(refresh, /markKeepzDraftSuccessful/);
+  assert.match(refresh, /EZZY-KEEPZ-SMS-SENT/);
+  assert.doesNotMatch(callback, /completeKeepzDraft|\/complete\.json/);
 });
 
 test('bank application creation preserves redirects without sending an early SMS', () => {
@@ -68,3 +73,4 @@ test('message texts and credentials are loaded only from server environment', ()
     assert.match(source, new RegExp(`process\\.env\\.${name}`));
   }
 });
+

@@ -45,8 +45,8 @@ test('Ezzy Keepz card payment includes server-priced delivery without changing c
   assert.match(orderRoute, /\.\.\.draftDeliveryFields\(delivery\.zone\)/);
   assert.match(orderRoute, /deliveryTag\(delivery\.zone\)/);
   assert.match(orderRoute, /delivery_fee['"], value: delivery\.fee\.toFixed\(2\)/);
-  assert.match(callbackRoute, /markKeepzDraftSuccessful/);
-  assert.match(callbackRoute, /if \(paymentType === 'card'\) \{[\s\S]*?sendMetaPurchase/);
+  assert.match(source, /async function refreshKeepzPayment/);
+  assert.match(source, /if \(paymentType === 'card' && !wasSuccessful\) \{[\s\S]*?sendMetaPurchase/);
 });
 
 test('courier Keepz charges only server-priced delivery and preserves callback safety', () => {
@@ -67,9 +67,9 @@ test('courier Keepz charges only server-priced delivery and preserves callback s
   assert.match(courierRoute, /callbackUri: 'https:\/\/api\.ezzy\.ge\/api\/keepz-callback'/);
   assert.doesNotMatch(courierRoute, /sendMetaPurchase/);
 
-  assert.match(callbackRoute, /Math\.abs\(callbackAmount - Number\(savedOrder\.amount\)\) > 0\.009/);
+  assert.match(source, /Math\.abs\(receivedAmount - Number\(savedOrder\.amount\)\) > 0\.009/);
   assert.match(source, /KEEPZ-STATUS-SUCCESS/);
-  assert.match(callbackRoute, /paymentPending: paymentType === 'courier'/);
+  assert.doesNotMatch(callbackRoute, /completeKeepzDraft|\/complete\.json/);
 });
 
 test('Keepz success is persisted for order-admin status display', () => {
@@ -77,6 +77,8 @@ test('Keepz success is persisted for order-admin status display', () => {
   assert.match(trackerSource, /KEEPZ-STATUS-SUCCESS\|Keepz\\s\+Status/);
   assert.match(trackerSource, /provider === 'KEEPZ'[\s\S]*?'გადახდილია'/);
   assert.match(trackerSource, /keepzSuccessful \? 'success' : 'in_progress'/);
+  assert.match(trackerSource, /app\.get\('\/api\/admin\/keepz-status'/);
+  assert.match(trackerSource, /provider === 'KEEPZ' \? keepzOrderId : bogOrderId/);
 });
 
 test('unpaid courier advances stay hidden and successful Keepz wins over COD', () => {
@@ -128,4 +130,5 @@ test('payment credentials are loaded from the environment', () => {
 
   assert.doesNotMatch(source, /const\s+KEEPZ_PRIVATE_KEY(?:_EZZY)?\s*=\s*["'`]/);
 });
+
 
