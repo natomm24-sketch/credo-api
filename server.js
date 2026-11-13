@@ -2315,11 +2315,33 @@ async function getKeepzDraft(orderId, draftOrderId) {
     }
   );
 
-  return (response.data.draft_orders || []).find(draft =>
+  const listedDraft = (response.data.draft_orders || []).find(draft =>
     (draft.note_attributes || []).some(attribute =>
       attribute.name === 'keepz_order_id' && attribute.value === orderId
     ) || String(draft.note || '').includes(`Keepz Order ID: ${orderId}`)
   );
+  if (listedDraft) return listedDraft;
+
+  const graphqlResponse = await axios.post(
+    `https://${SHOP}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
+    {
+      query: `query KeepzDraft($search: String!) {
+        draftOrders(first: 10, query: $search, sortKey: UPDATED_AT, reverse: true) {
+          nodes { legacyResourceId }
+        }
+      }`,
+      variables: { search: `tag:'KZ:${orderId}'` },
+    },
+    { headers: { ...headers, 'Content-Type': 'application/json' }, timeout: 10000 },
+  );
+  const legacyResourceId = graphqlResponse.data?.data?.draftOrders?.nodes?.[0]?.legacyResourceId;
+  if (!legacyResourceId) return null;
+
+  const exactDraftResponse = await axios.get(
+    `https://${SHOP}/admin/api/${SHOPIFY_API_VERSION}/draft_orders/${legacyResourceId}.json`,
+    { headers, timeout: 10000 },
+  );
+  return exactDraftResponse.data.draft_order;
 }
 
 function keepzOrderFromDraft(draft) {
