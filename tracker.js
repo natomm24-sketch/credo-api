@@ -356,7 +356,7 @@ function extractApplicationMeta(tags, note, provider, fallbackStatus) {
 
   let applicationStatus = fallbackStatus || 'განაცხადი შექმნილია';
   if (provider === 'COD') applicationStatus = isCourierAdvance
-    ? (keepzSuccessful ? 'მიწოდება-გადახდილია' : 'წინასწარი გადახდა მუშავდება')
+    ? (keepzSuccessful ? 'მიწოდება-გადახდილია' : 'მიწოდება გადაუხდელია')
     : 'კურიერთან გადახდა';
   if (provider === 'TBC' && tbcStatusId !== null) applicationStatus = TBC_STATUS_LABELS[tbcStatusId] || `სტატუსი ${tbcStatusId}`;
   if (provider === 'CREDO' && credoStatusId !== null) applicationStatus = CREDO_STATUS_LABELS[credoStatusId] || `Credo სტატუსი ${credoStatusId}`;
@@ -367,7 +367,9 @@ function extractApplicationMeta(tags, note, provider, fallbackStatus) {
     ? credoStatusId
     : (provider === 'BOG' || provider === 'BOG_BNPL'
       ? bogStatusId
-      : ((provider === 'KEEPZ' || isCourierAdvance) ? (keepzSuccessful ? 'success' : 'in_progress') : tbcStatusId));
+      : ((provider === 'KEEPZ' || isCourierAdvance)
+        ? (keepzSuccessful ? 'success' : (isCourierAdvance ? 'fail' : 'in_progress'))
+        : tbcStatusId));
 
   return {
     applicationStatus,
@@ -1162,7 +1164,6 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
         const draftNodes = draftData.draftOrders?.nodes || [];
         await recoverSuccessfulCourierAdvances(draftNodes, bankConfig);
         drafts = draftNodes
-          .filter((draft) => !isPendingCourierAdvance(draft))
           .map((draft) => {
           const provider = detectProvider(draft.tags, draft.note2);
           return {
