@@ -304,6 +304,40 @@ function isPendingCourierAdvance(record) {
   return tags.includes('COURIER-ADVANCE-PENDING') && !paymentSucceeded;
 }
 
+const courierAdvanceRefreshCache = new Map();
+const COURIER_ADVANCE_REFRESH_TTL_MS = 2 * 60 * 1000;
+
+async function recoverSuccessfulCourierAdvances(records, bankConfig) {
+  if (typeof bankConfig?.refreshKeepzPayment !== 'function') return;
+
+  const pending = records.filter(isPendingCourierAdvance).slice(0, 12);
+  await Promise.allSettled(pending.map(async (record) => {
+    const tags = Array.isArray(record?.tags) ? record.tags : String(record?.tags || '').split(',');
+    const sourceText = tags.join('\n') + '\n' + (record?.note || record?.note2 || '');
+    const orderId = sourceText.match(/(?:Keepz\s+Order\s+ID:\s*|\bKZ:)([0-9a-f-]{36})/i)?.[1];
+    if (!orderId) return;
+
+    const cached = courierAdvanceRefreshCache.get(orderId);
+    if (cached && Date.now() - cached.checkedAt < COURIER_ADVANCE_REFRESH_TTL_MS) return;
+    courierAdvanceRefreshCache.set(orderId, { checkedAt: Date.now() });
+
+    try {
+      const result = await bankConfig.refreshKeepzPayment(orderId);
+      if (!result?.success) return;
+
+      record.tags = [...new Set([
+        ...tags.filter((tag) => String(tag).trim().toUpperCase() !== 'COURIER-ADVANCE-PENDING'),
+        'KEEPZ-STATUS-SUCCESS',
+        'COURIER-ADVANCE-PAID',
+      ])];
+      const noteKey = Object.prototype.hasOwnProperty.call(record, 'note2') ? 'note2' : 'note';
+      record[noteKey] = ((record[noteKey] || '') + '\nKeepz Status: SUCCESS').trim();
+    } catch (error) {
+      console.error('COURIER ADVANCE RECOVERY ERROR:', error.response?.status || error.message);
+    }
+  }));
+}
+
 function extractApplicationMeta(tags, note, provider, fallbackStatus) {
   const text = `${Array.isArray(tags) ? tags.join('\n') : tags || ''}\n${note || ''}`;
   const sessionId = text.match(/TBC\s+Session\s+ID:\s*([0-9a-f-]{20,})/i)?.[1] || null;
@@ -1125,7 +1159,9 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
       let draftWarning = null;
       try {
         const draftData = await graphql(draftQuery, { search: search || null });
-        drafts = (draftData.draftOrders?.nodes || [])
+        const draftNodes = draftData.draftOrders?.nodes || [];
+        await recoverSuccessfulCourierAdvances(draftNodes, bankConfig);
+        drafts = draftNodes
           .filter((draft) => !isPendingCourierAdvance(draft))
           .map((draft) => {
           const provider = detectProvider(draft.tags, draft.note2);
