@@ -2192,7 +2192,7 @@ app.post('/api/keepz-courier-order', async (req, res) => {
           shipping_address: {
             first_name: customer.name || 'Customer',
             address1: customer.address || '',
-            city: delivery.zone === 'tbilisi' ? 'თბილისი' : 'რეგიონი',
+            city: delivery.zone === 'tbilisi' ? 'თბილისი' : String(customer.city || '').trim(),
             phone: customer.phone || '',
             country: 'Georgia',
           },
