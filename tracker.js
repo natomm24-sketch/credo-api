@@ -293,10 +293,15 @@ function detectProvider(tags, note) {
 }
 
 function isPendingCourierAdvance(record) {
-  const tags = Array.isArray(record?.tags)
+  const tags = (Array.isArray(record?.tags)
     ? record.tags
-    : String(record?.tags || '').split(',');
-  return tags.some((tag) => String(tag).trim().toUpperCase() === 'COURIER-ADVANCE-PENDING');
+    : String(record?.tags || '').split(','))
+    .map((tag) => String(tag).trim().toUpperCase());
+  const note = String(record?.note || record?.note2 || '').toUpperCase();
+  const paymentSucceeded = tags.includes('KEEPZ-STATUS-SUCCESS')
+    || tags.includes('COURIER-ADVANCE-PAID')
+    || /KEEPZ\s+STATUS:\s*SUCCESS/i.test(note);
+  return tags.includes('COURIER-ADVANCE-PENDING') && !paymentSucceeded;
 }
 
 function extractApplicationMeta(tags, note, provider, fallbackStatus) {
