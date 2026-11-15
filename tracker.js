@@ -43,6 +43,13 @@ function deliveryCity(address, tags) {
   return '';
 }
 
+function displayDeliveryAddress(address, tags) {
+  const addressLine = String(address?.address1 || '').trim();
+  const city = deliveryCity(address, tags);
+  if (!city || addressLine.toLocaleLowerCase('ka-GE').includes(city.toLocaleLowerCase('ka-GE'))) return addressLine;
+  return addressLine ? `${city}, ${addressLine}` : city;
+}
+
 function requestAllowed(req) {
   const forwarded = String(req.headers['x-forwarded-for'] || '');
   const ip = forwarded.split(',')[0].trim() || req.ip || 'unknown';
@@ -1137,7 +1144,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
         shippingAddress: order.shippingAddress ? {
           name: order.shippingAddress.name || '',
           city: deliveryCity(order.shippingAddress, order.tags),
-          address1: order.shippingAddress.address1 || '',
+          address1: displayDeliveryAddress(order.shippingAddress, order.tags),
         } : null,
         note: order.note || '',
         tags: order.tags || [],
@@ -1192,7 +1199,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             shippingAddress: draft.shippingAddress ? {
               name: draft.shippingAddress.name || '',
               city: deliveryCity(draft.shippingAddress, draft.tags),
-              address1: draft.shippingAddress.address1 || '',
+              address1: displayDeliveryAddress(draft.shippingAddress, draft.tags),
             } : null,
             note: draft.note2 || '',
             tags: draft.tags || [],
