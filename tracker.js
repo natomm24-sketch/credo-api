@@ -1,5 +1,5 @@
 const axios = require('axios');
-const { totalWithDeliveryFallback } = require('./installment-delivery');
+const { deliveryDetailsFromTags, totalWithDeliveryFallback } = require('./installment-delivery');
 const crypto = require('crypto');
 const {
   createLoginChallenge,
@@ -32,6 +32,15 @@ function normalizeName(value) {
     .trim()
     .replace(/\s+/g, ' ')
     .toLocaleLowerCase('ka-GE');
+}
+
+function deliveryCity(address, tags) {
+  const savedCity = String(address?.city || '').trim();
+  if (savedCity) return savedCity;
+  const delivery = deliveryDetailsFromTags(tags);
+  if (delivery?.zone === 'tbilisi') return 'თბილისი';
+  if (delivery?.zone === 'region') return 'რეგიონი';
+  return '';
 }
 
 function requestAllowed(req) {
@@ -1127,7 +1136,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
         },
         shippingAddress: order.shippingAddress ? {
           name: order.shippingAddress.name || '',
-          city: order.shippingAddress.city || '',
+          city: deliveryCity(order.shippingAddress, order.tags),
           address1: order.shippingAddress.address1 || '',
         } : null,
         note: order.note || '',
@@ -1182,7 +1191,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
             },
             shippingAddress: draft.shippingAddress ? {
               name: draft.shippingAddress.name || '',
-              city: draft.shippingAddress.city || '',
+              city: deliveryCity(draft.shippingAddress, draft.tags),
               address1: draft.shippingAddress.address1 || '',
             } : null,
             note: draft.note2 || '',
