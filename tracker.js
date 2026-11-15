@@ -368,7 +368,7 @@ function extractApplicationMeta(tags, note, provider, fallbackStatus) {
     : (provider === 'BOG' || provider === 'BOG_BNPL'
       ? bogStatusId
       : ((provider === 'KEEPZ' || isCourierAdvance)
-        ? (keepzSuccessful ? 'success' : (isCourierAdvance ? 'fail' : 'in_progress'))
+        ? (keepzSuccessful ? 'success' : (isCourierAdvance ? 'reject' : 'in_progress'))
         : tbcStatusId));
 
   return {
