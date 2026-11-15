@@ -2415,11 +2415,27 @@ async function refreshKeepzPayment(orderId, { callbackAmount } = {}) {
 
   const refresh = (async () => {
     const verified = await verifyKeepzPayment(orderId);
+    const pending = pendingOrders[orderId];
     if (verified.integratorOrderId !== orderId || verified.status !== 'SUCCESS') {
-      return { success: false, status: verified.status || 'UNKNOWN', label: 'გადახდა მუშავდება' };
+      let paymentType = pending?.paymentType || 'card';
+      if (!pending) {
+        try {
+          const existingDraft = await getKeepzDraft(orderId);
+          if (existingDraft) paymentType = keepzOrderFromDraft(existingDraft).paymentType;
+        } catch (draftError) {
+          console.error('KEEPZ UNPAID DRAFT LOOKUP ERROR:', draftError.response?.status || draftError.message);
+        }
+      }
+      const isCourierPayment = paymentType === 'courier';
+      return {
+        success: false,
+        status: verified.status || 'UNKNOWN',
+        statusId: isCourierPayment ? 'reject' : 'in_progress',
+        label: isCourierPayment ? 'მიწოდება გადაუხდელია' : 'გადახდა მუშავდება',
+        paymentType,
+      };
     }
 
-    const pending = pendingOrders[orderId];
     const draft = await getKeepzDraft(orderId, pending?.draftOrderId);
     if (!draft) throw new Error('Keepz draft order not found');
 
