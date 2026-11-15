@@ -36,18 +36,28 @@ function normalizeName(value) {
 
 function deliveryCity(address, tags) {
   const savedCity = String(address?.city || '').trim();
-  if (savedCity) return savedCity;
+  if (savedCity && savedCity.toLocaleLowerCase('ka-GE') !== 'რეგიონი') return savedCity;
   const delivery = deliveryDetailsFromTags(tags);
   if (delivery?.zone === 'tbilisi') return 'თბილისი';
-  if (delivery?.zone === 'region') return 'რეგიონი';
   return '';
 }
 
 function displayDeliveryAddress(address, tags) {
   const addressLine = String(address?.address1 || '').trim();
-  const city = deliveryCity(address, tags);
-  if (!city || addressLine.toLocaleLowerCase('ka-GE').includes(city.toLocaleLowerCase('ka-GE'))) return addressLine;
-  return addressLine ? `${city}, ${addressLine}` : city;
+  if (!addressLine) return '';
+
+  const delivery = deliveryDetailsFromTags(tags);
+  const removablePrefixes = [
+    deliveryCity(address, tags),
+    delivery?.zone === 'region' ? 'რეგიონი' : '',
+  ].filter(Boolean);
+
+  for (const prefix of removablePrefixes) {
+    if (!addressLine.toLocaleLowerCase('ka-GE').startsWith(prefix.toLocaleLowerCase('ka-GE'))) continue;
+    const remainder = addressLine.slice(prefix.length).replace(/^[\s,;:\-]+/, '').trim();
+    return remainder;
+  }
+  return addressLine;
 }
 
 function requestAllowed(req) {
