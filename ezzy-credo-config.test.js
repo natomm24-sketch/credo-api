@@ -24,6 +24,10 @@ test('Ezzy Credo checkout uses only the isolated IZI company credentials', () =>
   assert.match(ezzyRoute, /SECRET_EZZY/);
   assert.match(ezzyRoute, /MERCHANT_ID_EZZY/);
   assert.doesNotMatch(ezzyRoute, /SECRET_COMFORT|MERCHANT_ID_COMFORT/);
+  assert.match(ezzyRoute, /widget_api\\/order\\.php/);
+  assert.match(ezzyRoute, /'Content-Type': 'application\\/json'/);
+  assert.match(ezzyRoute, /products:\\s*formattedProducts/);
+  assert.doesNotMatch(ezzyRoute, /widget_api\\/index\\.php|qs\\.stringify\\(data\\)/);
   assert.match(ezzyRoute, /return res\.json\(\{ redirectUrl, orderCode \}\)/);
 });
 
@@ -37,6 +41,8 @@ test('Comfortmix Credo checkout keeps the existing company credentials', () => {
   assert.match(comfortRoute, /SECRET_COMFORT/);
   assert.match(comfortRoute, /MERCHANT_ID_COMFORT/);
   assert.doesNotMatch(comfortRoute, /SECRET_EZZY|MERCHANT_ID_EZZY/);
+  assert.match(comfortRoute, /widget_api\\/index\\.php/);
+  assert.match(comfortRoute, /qs\\.stringify\\(data\\)/);
 });
 
 test('Ezzy order tracking uses the isolated Credo status credentials', () => {
