@@ -378,25 +378,18 @@ console.log("CREDO REQUEST:", {
     
     const data = {
       merchantId: MERCHANT_ID_EZZY,
-      orderCode: orderCode,
-      check: check,
-      installmentLength: 12
+      orderCode,
+      check,
+      products: formattedProducts
     };
 
-    formattedProducts.forEach((p, i) => {
-      data[`products[${i}][id]`] = p.id;
-      data[`products[${i}][title]`] = p.title;
-      data[`products[${i}][amount]`] = p.amount;
-      data[`products[${i}][price]`] = p.price;
-      data[`products[${i}][type]`] = 0;
-    });
-
     const response = await axios.post(
-      'https://ganvadeba.credo.ge/widget_api/index.php',
-      qs.stringify(data),
+      'https://ganvadeba.credo.ge/widget_api/order.php',
+      data,
       {
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         maxRedirects: 0,
         validateStatus: () => true
