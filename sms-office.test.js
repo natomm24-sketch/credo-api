@@ -86,6 +86,32 @@ test('fills courier delivery and remaining amount placeholders', async () => {
   assert.equal(submitted.get('content').includes('{'), false);
 });
 
+test('does not send a message with unresolved template placeholders', async () => {
+  let called = false;
+  const client = createSmsOfficeClient({
+    apiKey: 'secret',
+    sender: 'EZZY',
+    texts: { cod: 'მიწოდება {delivery_fee}₾, დარჩენილი {remaining_amount}₾.' },
+    request: async () => {
+      called = true;
+      return { Success: true };
+    },
+  });
+
+  const result = await client.sendOrderMessage({
+    type: 'cod',
+    phone: '555123456',
+    draftOrderId: '123',
+  });
+
+  assert.equal(called, false);
+  assert.deepEqual(result, {
+    sent: false,
+    skipped: true,
+    reason: 'unresolved_template_variables',
+  });
+});
+
 test('turns the order tracker domain into a clickable HTTPS link', async () => {
   const submittedMessages = [];
   const client = createSmsOfficeClient({

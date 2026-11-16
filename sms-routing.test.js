@@ -13,18 +13,20 @@ function route(pathname) {
   return source.slice(start, end === -1 ? source.length : end);
 }
 
-test('legacy COD and verified Keepz callbacks use their own configurable SMS', () => {
-  assert.match(route('/api/create-order-and-cod-ezzy'), /sendEzzyOrderSms\(\{ type: 'cod'/);
+test('only verified Keepz callbacks send courier SMS', () => {
+  assert.doesNotMatch(route('/api/create-order-and-cod-ezzy'), /sendEzzyOrderSms/);
   const callback = route('/api/keepz-callback');
   const refreshStart = source.indexOf('async function refreshKeepzPayment');
   const refreshEnd = source.indexOf("app.post('/api/keepz-callback'", refreshStart);
   const refresh = source.slice(refreshStart, refreshEnd);
   assert.match(callback, /refreshKeepzPayment\(integratorOrderId/);
+  assert.match(callback, /sendKeepzCallbackSms\(integratorOrderId\)/);
   assert.match(refresh, /type: paymentType === 'courier' \? 'cod' : 'card'/);
   assert.match(refresh, /delivery_fee:[\s\S]*?remaining_amount:/);
   assert.match(refresh, /if \(paymentType === 'card' && !wasSuccessful\) \{[\s\S]*?sendMetaPurchase/);
   assert.match(refresh, /markKeepzDraftSuccessful/);
   assert.match(refresh, /EZZY-KEEPZ-SMS-SENT/);
+  assert.doesNotMatch(route('/api/keepz-success'), /sendKeepzCallbackSms/);
   assert.doesNotMatch(callback, /completeKeepzDraft|\/complete\.json/);
 });
 

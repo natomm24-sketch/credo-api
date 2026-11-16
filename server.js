@@ -783,14 +783,12 @@ app.post('/api/create-order-and-cod-ezzy', async (req, res) => {
     );
 
     const draftOrderId = shopifyResponse.data.draft_order.id;
-    const smsSent = await sendEzzyOrderSms({ type: 'cod', phone: req.body.phone, draftOrderId });
-
     return res.json({
 
       success: true,
 
       draftOrderId,
-      smsSent
+      smsSent: false
 
     });
 
@@ -2471,28 +2469,16 @@ async function refreshKeepzPayment(orderId, { callbackAmount } = {}) {
       });
     }
 
-    const smsAlreadySent = existingTags.includes('EZZY-KEEPZ-SMS-SENT') || Boolean(pending?.smsSentAt);
-    const smsSent = smsAlreadySent || await sendEzzyOrderSms({
-      type: paymentType === 'courier' ? 'cod' : 'card',
-      phone: savedOrder.customer?.phone,
-      draftOrderId: draft.id,
-      variables: paymentType === 'courier' ? {
-        delivery_fee: Number(savedOrder.amount).toFixed(2).replace(/\.00$/, ''),
-        remaining_amount: Number(savedOrder.productTotal).toFixed(2).replace(/\.00$/, ''),
-      } : undefined,
-    });
-    if (smsSent && !smsAlreadySent) await markKeepzDraftSmsSent(markedDraft);
-
     pendingOrders[orderId] = {
       ...savedOrder,
       draftOrderId: draft.id,
       paymentType,
-      smsSentAt: smsSent ? (pending?.smsSentAt || Date.now()) : undefined,
+      smsSentAt: pending?.smsSentAt,
       completedAt: Date.now()
     };
 
     console.log('KEEPZ PAYMENT MARKED PAID:', orderId);
-    return { success: true, status: 'SUCCESS', label: 'გადახდილია', smsSent };
+    return { success: true, status: 'SUCCESS', label: 'გადახდილია', smsSent: Boolean(pending?.smsSentAt) };
   })();
 
   keepzStatusRefreshes.set(orderId, refresh);
@@ -2501,6 +2487,39 @@ async function refreshKeepzPayment(orderId, { callbackAmount } = {}) {
   } finally {
     keepzStatusRefreshes.delete(orderId);
   }
+}
+
+async function sendKeepzCallbackSms(orderId) {
+  const pending = pendingOrders[orderId];
+  const draft = await getKeepzDraft(orderId, pending?.draftOrderId);
+  if (!draft) throw new Error('Keepz draft order not found');
+
+  const savedOrder = pending || keepzOrderFromDraft(draft);
+  const paymentType = savedOrder.paymentType === 'courier' ? 'courier' : 'card';
+  const existingTags = String(draft.tags || '').split(',').map((tag) => tag.trim()).filter(Boolean);
+  const smsAlreadySent = existingTags.includes('EZZY-KEEPZ-SMS-SENT') || Boolean(pending?.smsSentAt);
+  if (smsAlreadySent) return true;
+
+  const smsSent = await sendEzzyOrderSms({
+    type: paymentType === 'courier' ? 'cod' : 'card',
+    phone: savedOrder.customer?.phone,
+    draftOrderId: draft.id,
+    variables: paymentType === 'courier' ? {
+      delivery_fee: Number(savedOrder.amount).toFixed(2).replace(/\.00$/, ''),
+      remaining_amount: Number(savedOrder.productTotal).toFixed(2).replace(/\.00$/, ''),
+    } : undefined,
+  });
+  if (!smsSent) return false;
+
+  await markKeepzDraftSmsSent(draft);
+  pendingOrders[orderId] = {
+    ...savedOrder,
+    draftOrderId: draft.id,
+    paymentType,
+    smsSentAt: Date.now(),
+    completedAt: pending?.completedAt || Date.now(),
+  };
+  return true;
 }
 
 app.post('/api/keepz-callback', async (req, res) => {
@@ -2528,6 +2547,7 @@ app.post('/api/keepz-callback', async (req, res) => {
     }
 
     const result = await refreshKeepzPayment(integratorOrderId, { callbackAmount: amount });
+    if (result.success) result.smsSent = await sendKeepzCallbackSms(integratorOrderId);
     return res.sendStatus(result.success ? 200 : 409);
 
   } catch (err) {

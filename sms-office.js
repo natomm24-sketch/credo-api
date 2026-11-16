@@ -83,6 +83,9 @@ function createSmsOfficeClient({ apiKey, sender, texts = {}, request = defaultRe
       (message, [name, value]) => message.replaceAll(`{${name}}`, String(value)),
       template,
     ).replace(/(^|[^/])order\.ezzy\.ge/gi, '$1https://order.ezzy.ge');
+    if (/\{[A-Za-z0-9_]+\}/.test(content)) {
+      return { sent: false, skipped: true, reason: 'unresolved_template_variables' };
+    }
     return sendMessage({ phone, content, reference: smsReference(draftOrderId) });
   }
 
