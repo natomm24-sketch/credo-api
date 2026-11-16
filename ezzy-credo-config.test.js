@@ -4,6 +4,7 @@ const test = require('node:test');
 
 const server = fs.readFileSync(require.resolve('./server'), 'utf8');
 const tracker = fs.readFileSync(require.resolve('./tracker'), 'utf8');
+const exampleEnv = fs.readFileSync(require.resolve('./.env.example'), 'utf8');
 
 function section(source, startMarker, endMarker) {
   const start = source.indexOf(startMarker);
@@ -45,4 +46,10 @@ test('Ezzy order tracking uses the isolated Credo status credentials', () => {
   assert.match(server, /credoSecret:\s*SECRET_COMFORT/);
   assert.match(server, /credoMerchantIdEzzy:\s*MERCHANT_ID_EZZY/);
   assert.match(server, /credoSecretEzzy:\s*SECRET_EZZY/);
+});
+
+
+test('Ezzy standard-installment Shop ID is documented without committing its secret', () => {
+  assert.match(exampleEnv, /^CREDO_MERCHANT_ID_EZZY=135861$/m);
+  assert.match(exampleEnv, /^CREDO_SECRET_EZZY=$/m);
 });
