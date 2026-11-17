@@ -26,6 +26,21 @@ test('all four Ezzy bank application payloads add server-priced delivery', () =>
   }
 });
 
+test('Ezzy BOG part-by-part uses Payment Manager BNPL without changing redirects', () => {
+  const route = section(
+    "app.post('/api/bog-part-order'",
+    '/* ===================== BOG PART BY PART Draft Order',
+  );
+  assert.match(route, /https:\/\/api\.bog\.ge\/payments\/v1\/ecommerce\/orders/);
+  assert.match(route, /payment_method:\s*\["bnpl"\]/);
+  assert.match(route, /const month = 4/);
+  assert.match(route, /const discountCode = "zero"/);
+  assert.match(route, /type:\s*discountCode/);
+  assert.match(route, /success:\s*"https:\/\/ezzy\.ge\/pages\/payment-success"/);
+  assert.match(route, /fail:\s*"https:\/\/ezzy\.ge\/payment-fail"/);
+  assert.doesNotMatch(route, /installment_type:\s*"STANDARD"/);
+});
+
 test('Credo merges delivery into product prices instead of sending a delivery line', () => {
   const route = section("app.post('/api/credo-order'", '/* ===================== SHOPIFY + CREDO FLOW');
   assert.match(route, /productsWithCredoDelivery\(req\.body\.products, req\.body\.delivery_zone\)/);

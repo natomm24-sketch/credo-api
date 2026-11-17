@@ -393,9 +393,11 @@ function extractApplicationMeta(tags, note, provider, fallbackStatus) {
     ? credoStatusId
     : (provider === 'BOG' || provider === 'BOG_BNPL'
       ? bogStatusId
-      : ((provider === 'KEEPZ' || isCourierAdvance)
-        ? (keepzSuccessful ? 'success' : (isCourierAdvance ? 'reject' : 'in_progress'))
-        : tbcStatusId));
+      : (provider === 'KEEPZ'
+        ? (keepzSuccessful ? 'success' : 'in_progress')
+        : (isCourierAdvance
+          ? (keepzSuccessful ? 'success' : 'reject')
+          : tbcStatusId)));
 
   return {
     applicationStatus,
@@ -446,6 +448,37 @@ function parseBogStatusPayload(payload, httpStatus = 200) {
   };
 }
 
+function parseBogPaymentStatusPayload(payload, httpStatus = 200) {
+  const status = String(payload?.order_status?.key || '').toLowerCase();
+  const paymentMethod = String(payload?.payment_detail?.transfer_method?.key || '').toLowerCase();
+  if (httpStatus !== 200 || !['created', 'processing', 'completed', 'rejected'].includes(status)) {
+    return {
+      available: false,
+      statusCode: httpStatus,
+      error: httpStatus === 401 || httpStatus === 404
+        ? 'საქართველოს ბანკში აქტიური განაცხადი ვერ მოიძებნა.'
+        : 'საქართველოს ბანკის სტატუსი ჯერ ხელმისაწვდომი არ არის.',
+    };
+  }
+  if (paymentMethod && paymentMethod !== 'bnpl') {
+    return { available: false, statusCode: 409, error: 'BOG გადახდის მეთოდი ნაწილ-ნაწილ არ არის.' };
+  }
+
+  const orderStatus = status === 'completed' ? 'success' : (status === 'rejected' ? 'error' : 'in_progress');
+  const installmentStatus = status === 'completed' ? 'success' : (status === 'rejected' ? 'reject' : 'unknown');
+  const statusId = resolveBogStatusId(orderStatus, installmentStatus);
+  return {
+    available: true,
+    statusCode: httpStatus,
+    statusId,
+    status: BOG_STATUS_LABELS[statusId] || BOG_STATUS_LABELS[orderStatus],
+    orderStatus,
+    installmentStatus,
+    shopOrderId: payload?.external_order_id || null,
+    paymentId: payload?.order_id || null,
+  };
+}
+
 async function getBogAccessToken(bankConfig, options = {}) {
   const { bogClientId, bogClientSecret } = bankConfig || {};
   if (!bogClientId || !bogClientSecret) throw new Error('საქართველოს ბანკის სტატუსის კავშირი ჯერ არ არის გამართული.');
@@ -476,13 +509,16 @@ async function fetchBogStatus(orderId, bankConfig, options = {}) {
   const id = String(orderId || '').trim();
   if (!BOG_ORDER_ID_PATTERN.test(id)) throw new Error('საქართველოს ბანკის განაცხადის ID არასწორია.');
 
-  const cached = bogStatusCache.get(id);
+  const cacheKey = `${options.paymentManager ? 'payments' : 'installment'}:${id}`;
+  const cached = bogStatusCache.get(cacheKey);
   if (!options.force && cached && Date.now() - cached.checkedAt < BOG_STATUS_CACHE_TTL_MS) {
     return cached.result;
   }
 
   const requestStatus = (token) => axios.get(
-    `https://installment.bog.ge/v1/installment/checkout/${encodeURIComponent(id)}`,
+    options.paymentManager
+      ? `https://api.bog.ge/payments/v1/receipt/${encodeURIComponent(id)}`
+      : `https://installment.bog.ge/v1/installment/checkout/${encodeURIComponent(id)}`,
     {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       timeout: options.timeout || 10_000,
@@ -497,8 +533,9 @@ async function fetchBogStatus(orderId, bankConfig, options = {}) {
     token = await getBogAccessToken(bankConfig, { ...options, force: true });
     response = await requestStatus(token);
   }
-  const result = { orderId: id, ...parseBogStatusPayload(response.data || {}, response.status) };
-  bogStatusCache.set(id, { checkedAt: Date.now(), result });
+  const parseStatus = options.paymentManager ? parseBogPaymentStatusPayload : parseBogStatusPayload;
+  const result = { orderId: id, ...parseStatus(response.data || {}, response.status) };
+  bogStatusCache.set(cacheKey, { checkedAt: Date.now(), result });
   return result;
 }
 
@@ -534,7 +571,9 @@ async function enrichBogStatuses(records, bankConfig) {
       const statusConfig = bogStatusConfigForProvider(record.provider, bankConfig);
       if (!statusConfig.bogClientId || !statusConfig.bogClientSecret) continue;
       try {
-        const result = await fetchBogStatus(record.applicationOrderId, statusConfig);
+        const result = await fetchBogStatus(record.applicationOrderId, statusConfig, {
+          paymentManager: record.provider === 'BOG_BNPL',
+        });
         if (result.available) {
           record.applicationStatusId = result.statusId;
           record.applicationStatus = result.status;
@@ -1190,6 +1229,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
         const draftNodes = draftData.draftOrders?.nodes || [];
         await recoverSuccessfulCourierAdvances(draftNodes, bankConfig);
         drafts = draftNodes
+          .filter((draft) => !isPendingCourierAdvance(draft))
           .map((draft) => {
           const provider = detectProvider(draft.tags, draft.note2);
           return {
@@ -1337,15 +1377,22 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
         return res.status(400).json({ error: 'საქართველოს ბანკის გადახდის ტიპი არასწორია.' });
       }
       const statusConfigs = requestedProvider
-        ? [bogStatusConfigForProvider(requestedProvider, bankConfig)]
+        ? [{
+            config: bogStatusConfigForProvider(requestedProvider, bankConfig),
+            paymentManager: requestedProvider === 'BOG_BNPL',
+          }]
         : [
-            bogStatusConfigForProvider('BOG', bankConfig),
-            bogStatusConfigForProvider('BOG_BNPL', bankConfig),
+            { config: bogStatusConfigForProvider('BOG', bankConfig), paymentManager: false },
+            { config: bogStatusConfigForProvider('BOG_BNPL', bankConfig), paymentManager: true },
           ];
       let result = null;
-      for (const statusConfig of statusConfigs) {
+      for (const { config: statusConfig, paymentManager } of statusConfigs) {
         if (!statusConfig.bogClientId || !statusConfig.bogClientSecret) continue;
-        result = await fetchBogStatus(orderId, statusConfig, { force: true, timeout: 15_000 });
+        result = await fetchBogStatus(orderId, statusConfig, {
+          force: true,
+          timeout: 15_000,
+          paymentManager,
+        });
         if (result.available || ![401, 404].includes(result.statusCode)) break;
       }
       if (!result) throw new Error('საქართველოს ბანკის სტატუსის კავშირი ჯერ არ არის გამართული.');
@@ -1454,6 +1501,7 @@ module.exports.statusHelpers = {
   BOG_STATUS_LABELS,
   resolveBogStatusId,
   parseBogStatusPayload,
+  parseBogPaymentStatusPayload,
   bogStatusCheckIsDue,
   bogStatusConfigForProvider,
   fetchBogStatus,

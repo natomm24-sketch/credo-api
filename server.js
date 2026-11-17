@@ -94,7 +94,11 @@ const TBC_MERCHANT_EZZY = requiredEnv('TBC_MERCHANT_EZZY');
 const TBC_CAMPAIGN_EZZY = Number(requiredEnv('TBC_CAMPAIGN_EZZY'));
 
 app.use(cors({ origin: '*' }));
-app.use(express.json());
+app.use(express.json({
+  verify: (req, res, buffer) => {
+    req.rawBody = Buffer.from(buffer);
+  },
+}));
 app.use(express.urlencoded({ extended: false }));
 
 /* ===================== EZZY PRODUCT REVIEWS ===================== */
@@ -265,6 +269,30 @@ const BOG_CLIENT_ID_EZZY = process.env.BOG_CLIENT_ID_EZZY;
 const BOG_CLIENT_SECRET_EZZY = process.env.BOG_CLIENT_SECRET_EZZY;
 const BOG_INSTALLMENT_CLIENT_ID_EZZY = requiredEnv('BOG_INSTALLMENT_CLIENT_ID_EZZY');
 const BOG_INSTALLMENT_CLIENT_SECRET_EZZY = requiredEnv('BOG_INSTALLMENT_CLIENT_SECRET_EZZY');
+const BOG_CALLBACK_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu4RUyAw3+CdkS3ZNILQh
+zHI9Hemo+vKB9U2BSabppkKjzjjkf+0Sm76hSMiu/HFtYhqWOESryoCDJoqffY0Q
+1VNt25aTxbj068QNUtnxQ7KQVLA+pG0smf+EBWlS1vBEAFbIas9d8c9b9sSEkTrr
+TYQ90WIM8bGB6S/KLVoT1a7SnzabjoLc5Qf/SLDG5fu8dH8zckyeYKdRKSBJKvhx
+tcBuHV4f7qsynQT+f2UYbESX/TLHwT5qFWZDHZ0YUOUIvb8n7JujVSGZO9/+ll/g
+4ZIWhC1MlJgPObDwRkRd8NFOopgxMcMsDIZIoLbWKhHVq67hdbwpAq9K9WMmEhPn
+PwIDAQAB
+-----END PUBLIC KEY-----`;
+
+function verifyBogPaymentCallback(req) {
+  const signature = String(req.get('Callback-Signature') || '').trim();
+  if (!signature || !Buffer.isBuffer(req.rawBody)) return false;
+  try {
+    return crypto.verify(
+      'RSA-SHA256',
+      req.rawBody,
+      BOG_CALLBACK_PUBLIC_KEY,
+      Buffer.from(signature, 'base64')
+    );
+  } catch (error) {
+    return false;
+  }
+}
 
 async function createBogCheckoutForStore({
   products,
@@ -1102,11 +1130,8 @@ app.post('/api/bog-part-order', async (req, res) => {
 
     const products = productsWithDelivery(req.body.products, req.body.delivery_zone);
 
-    const month =
-      Number(req.body.month) || 4;
-
-    const discountCode =
-      req.body.discount_code || "ZERO";
+    const month = 4;
+    const discountCode = "zero";
 
     if (!products.length) {
       return res.status(400).json({
@@ -1153,31 +1178,15 @@ app.post('/api/bog-part-order', async (req, res) => {
       }, 0)
     );
 
-    const cartItems = products.map(p => ({
-
-      total_item_amount:
-        (Number(p.price) > 10000
-          ? Number(p.price) / 100
-          : Number(p.price))
-        * (Number(p.amount) || 1),
-
-      item_description:
-        p.product_title
-          ? `${p.product_title} - ${p.title}`
-          : (p.title || "Product"),
-
-      total_item_qty:
-        Number(p.amount) || 1,
-
-      item_vendor_code:
-        String(p.id),
-
-      product_image_url:
-        "https://ezzy.ge",
-
-      item_site_detail_url:
-        "https://ezzy.ge"
-
+    const basket = products.map(p => ({
+      quantity: Number(p.amount) || 1,
+      unit_price: Number(p.price) > 10000
+        ? Number(p.price) / 100
+        : Number(p.price),
+      product_id: String(p.id),
+      description: p.product_title
+        ? `${p.product_title} - ${p.title}`
+        : (p.title || "Product")
     }));
 
     const shopOrderId = /^BNPL_\d+$/.test(String(req.body.shopOrderId || ''))
@@ -1186,42 +1195,27 @@ app.post('/api/bog-part-order', async (req, res) => {
 
     const checkoutResponse = await axios.post(
 
-      'https://installment.bog.ge/v1/installment/checkout',
+      'https://api.bog.ge/payments/v1/ecommerce/orders',
 
       {
-        intent: "LOAN",
-
-        installment_month: month,
-
-        installment_type: "STANDARD",
-
-        discount_code: discountCode,
-
-        shop_order_id: shopOrderId,
-
-        success_redirect_url:
-          "https://ezzy.ge/pages/payment-success",
-
-        fail_redirect_url:
-          "https://ezzy.ge/payment-fail",
-
-        reject_redirect_url:
-          "https://ezzy.ge/payment-fail",
-
-        validate_items: true,
-
-        locale: "ka",
-
-        purchase_units: [
-          {
-            amount: {
-              currency_code: "GEL",
-              value: amount
-            }
+        callback_url: "https://api.ezzy.ge/api/bog-installment-callback",
+        external_order_id: shopOrderId,
+        purchase_units: {
+          currency: "GEL",
+          total_amount: amount,
+          basket
+        },
+        redirect_urls: {
+          success: "https://ezzy.ge/pages/payment-success",
+          fail: "https://ezzy.ge/payment-fail"
+        },
+        payment_method: ["bnpl"],
+        config: {
+          loan: {
+            type: discountCode,
+            month
           }
-        ],
-
-        cart_items: cartItems
+        }
 
       },
 
@@ -1229,25 +1223,21 @@ app.post('/api/bog-part-order', async (req, res) => {
         headers: {
           Authorization:
             `Bearer ${accessToken}`,
-          'Content-Type':
-            'application/json'
+          'Content-Type': 'application/json',
+          'Accept-Language': 'ka',
+          'Idempotency-Key': crypto.randomUUID()
         }
       }
 
     );
 
-    const redirectLink =
-      checkoutResponse.data.links.find(
-        l => l.rel === "target"
-      );
-
     return res.json({
 
       redirectUrl:
-        redirectLink?.href,
+        checkoutResponse.data?._links?.redirect?.href,
 
       orderId:
-        checkoutResponse.data.order_id
+        checkoutResponse.data?.id
 
     });
 
@@ -1530,19 +1520,45 @@ app.post('/api/create-order-and-bog-part-comfortmix', async (req, res) => {
 /* ===================== BOG INSTALLMENT CALLBACK ===================== */
 
 app.post('/api/bog-installment-callback', async (req, res) => {
-  const orderId = String(req.body?.order_id || '').trim();
-  const callbackShopOrderId = String(req.body?.shop_order_id || '').trim();
-  const paymentMethod = String(req.body?.payment_method || '').trim().toUpperCase();
-
-  if (!/^[A-Za-z0-9_-]{20,100}$/.test(orderId) || (paymentMethod && paymentMethod !== 'BOG_LOAN')) {
-    return res.sendStatus(400);
-  }
-
   try {
-    const verified = await orderTracker.statusHelpers.fetchBogStatus(orderId, {
-      bogClientId: BOG_INSTALLMENT_CLIENT_ID_EZZY,
-      bogClientSecret: BOG_INSTALLMENT_CLIENT_SECRET_EZZY,
-    }, { force: true, timeout: 15_000 });
+    const isPaymentManagerCallback = req.body?.event === 'order_payment' && req.body?.body;
+    let orderId;
+    let callbackShopOrderId;
+    let verified;
+
+    if (isPaymentManagerCallback) {
+      if (!verifyBogPaymentCallback(req)) return res.sendStatus(400);
+
+      const payment = req.body.body;
+      orderId = String(payment.order_id || '').trim();
+      callbackShopOrderId = String(payment.external_order_id || '').trim();
+      const paymentMethod = String(payment.payment_detail?.transfer_method?.key || '').toLowerCase();
+      const status = String(payment.order_status?.key || '').toLowerCase();
+      if (
+        !/^[A-Za-z0-9_-]{20,100}$/.test(orderId)
+        || !/^BNPL_\d+$/.test(callbackShopOrderId)
+        || (paymentMethod && paymentMethod !== 'bnpl')
+      ) {
+        return res.sendStatus(400);
+      }
+      verified = {
+        available: true,
+        shopOrderId: callbackShopOrderId,
+        orderStatus: status === 'completed' ? 'success' : (status === 'rejected' ? 'error' : 'in_progress'),
+        installmentStatus: status === 'completed' ? 'success' : (status === 'rejected' ? 'reject' : 'unknown'),
+      };
+    } else {
+      orderId = String(req.body?.order_id || '').trim();
+      callbackShopOrderId = String(req.body?.shop_order_id || '').trim();
+      const paymentMethod = String(req.body?.payment_method || '').trim().toUpperCase();
+      if (!/^[A-Za-z0-9_-]{20,100}$/.test(orderId) || (paymentMethod && paymentMethod !== 'BOG_LOAN')) {
+        return res.sendStatus(400);
+      }
+      verified = await orderTracker.statusHelpers.fetchBogStatus(orderId, {
+        bogClientId: BOG_INSTALLMENT_CLIENT_ID_EZZY,
+        bogClientSecret: BOG_INSTALLMENT_CLIENT_SECRET_EZZY,
+      }, { force: true, timeout: 15_000 });
+    }
 
     if (!verified.available) {
       console.log('BOG CALLBACK STATUS NOT READY:', verified.statusCode || 'unknown');

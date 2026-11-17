@@ -47,6 +47,8 @@ test('bank application creation preserves redirects without sending an early SMS
 test('verified successful bank statuses send one deduplicated Ezzy SMS', () => {
   const bogCallback = route('/api/bog-installment-callback');
   assert.match(bogCallback, /fetchBogStatus\([\s\S]*?force: true/);
+  assert.match(bogCallback, /verifyBogPaymentCallback/);
+  assert.match(bogCallback, /paymentMethod !== 'bnpl'/);
   assert.match(bogCallback, /callbackWasSuccessful[\s\S]*?sendEzzyOrderSms/);
   assert.match(bogCallback, /BANK_SMS_SENT_TAG/);
 

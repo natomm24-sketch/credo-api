@@ -16,6 +16,7 @@ Module._load = originalLoad;
 
 const {
   parseBogStatusPayload,
+  parseBogPaymentStatusPayload,
   resolveBogStatusId,
   bogStatusCheckIsDue,
   bogStatusConfigForProvider,
@@ -43,6 +44,25 @@ test('uses the actual BOG installment decision when checkout and application fie
 test('handles unavailable BOG status responses', () => {
   assert.equal(parseBogStatusPayload({}, 404).available, false);
   assert.equal(parseBogStatusPayload({ status: 'CREATED' }, 200).available, false);
+});
+
+test('maps Payment Manager BNPL statuses without treating them as standard installment', () => {
+  const completed = parseBogPaymentStatusPayload({
+    order_id: 'ORDER_12345678901234567890',
+    external_order_id: 'BNPL_123',
+    order_status: { key: 'completed' },
+    payment_detail: { transfer_method: { key: 'bnpl' } },
+  });
+  assert.equal(completed.available, true);
+  assert.equal(completed.statusId, 'success');
+  assert.equal(completed.shopOrderId, 'BNPL_123');
+
+  const wrongMethod = parseBogPaymentStatusPayload({
+    order_status: { key: 'completed' },
+    payment_detail: { transfer_method: { key: 'bog_loan' } },
+  });
+  assert.equal(wrongMethod.available, false);
+  assert.equal(wrongMethod.statusCode, 409);
 });
 
 test('automatically checks BOG and BOG BNPL applications after two minutes', () => {
@@ -100,6 +120,37 @@ test('authenticates, fetches and caches BOG installment status', async () => {
     assert.deepEqual(second, first);
     assert.equal(tokenCalls, 1);
     assert.equal(statusCalls, 1);
+  } finally {
+    axios.post = originalPost;
+    axios.get = originalGet;
+  }
+});
+
+test('fetches BNPL status from Payment Manager receipt API', async () => {
+  const originalPost = axios.post;
+  const originalGet = axios.get;
+  const config = { bogClientId: `bnpl-client-${Date.now()}`, bogClientSecret: 'secret-test' };
+  const orderId = 'ORDER_Z9Y8X7W6V5U4T3S2R1';
+
+  axios.post = async () => ({ data: { access_token: 'bnpl-token', expires_in: 3600 } });
+  axios.get = async (url, options) => {
+    assert.equal(url, `https://api.bog.ge/payments/v1/receipt/${orderId}`);
+    assert.equal(options.headers.Authorization, 'Bearer bnpl-token');
+    return {
+      status: 200,
+      data: {
+        order_id: orderId,
+        external_order_id: 'BNPL_456',
+        order_status: { key: 'completed' },
+        payment_detail: { transfer_method: { key: 'bnpl' } },
+      },
+    };
+  };
+
+  try {
+    const result = await fetchBogStatus(orderId, config, { force: true, paymentManager: true });
+    assert.equal(result.statusId, 'success');
+    assert.equal(result.shopOrderId, 'BNPL_456');
   } finally {
     axios.post = originalPost;
     axios.get = originalGet;
