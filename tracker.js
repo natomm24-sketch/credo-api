@@ -379,6 +379,7 @@ function extractApplicationMeta(tags, note, provider, fallbackStatus) {
   const credoStatusId = credoStatusMatch ? Number(credoStatusMatch[1]) : null;
   const credoCode = text.match(/Credo\s+Order\s+Code:\s*([\w-]+)/i)?.[1] || null;
   const bogStatusId = resolveBogStatusId(bogStatusMatch?.[1], bogInstallmentStatusMatch?.[1]);
+  const bogBnplCreationFailed = provider === 'BOG_BNPL' && !bogOrderId;
 
   let applicationStatus = fallbackStatus || 'განაცხადი შექმნილია';
   if (provider === 'COD') applicationStatus = isCourierAdvance
@@ -389,10 +390,12 @@ function extractApplicationMeta(tags, note, provider, fallbackStatus) {
   if ((provider === 'BOG' || provider === 'BOG_BNPL') && bogStatusId) applicationStatus = BOG_STATUS_LABELS[bogStatusId] || `BOG სტატუსი: ${bogStatusId}`;
   if (provider === 'KEEPZ') applicationStatus = keepzSuccessful ? 'გადახდილია' : 'გადახდა მუშავდება';
 
+  if (bogBnplCreationFailed) applicationStatus = BOG_STATUS_LABELS.error;
+
   const applicationStatusId = provider === 'CREDO'
     ? credoStatusId
     : (provider === 'BOG' || provider === 'BOG_BNPL'
-      ? bogStatusId
+      ? (bogBnplCreationFailed ? 'error' : bogStatusId)
       : (provider === 'KEEPZ'
         ? (keepzSuccessful ? 'success' : 'in_progress')
         : (isCourierAdvance
@@ -1498,6 +1501,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
 module.exports.shopify = { shop: SHOP, getAccessToken, graphql };
 module.exports.statusHelpers = {
   extractAdminWorkflow,
+  extractApplicationMeta,
   BOG_STATUS_LABELS,
   resolveBogStatusId,
   parseBogStatusPayload,

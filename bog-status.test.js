@@ -17,11 +17,19 @@ Module._load = originalLoad;
 const {
   parseBogStatusPayload,
   parseBogPaymentStatusPayload,
+  extractApplicationMeta,
   resolveBogStatusId,
   bogStatusCheckIsDue,
   bogStatusConfigForProvider,
   fetchBogStatus,
 } = tracker.statusHelpers;
+
+test('marks a BNPL draft without a bank order ID as a failed bank creation', () => {
+  const result = extractApplicationMeta(['BOG-BNPL'], 'BOG PART BY PART', 'BOG_BNPL');
+  assert.equal(result.applicationOrderId, null);
+  assert.equal(result.applicationStatusId, 'error');
+  assert.equal(result.applicationStatus, tracker.statusHelpers.BOG_STATUS_LABELS.error);
+});
 
 test('maps documented BOG installment statuses', () => {
   assert.equal(parseBogStatusPayload({ status: 'in_progress', installment_status: 'unknown' }).status, 'განაცხადი მუშავდება');
