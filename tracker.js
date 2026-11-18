@@ -1498,7 +1498,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
 };
 
 // Reviews share the existing EZZY app's renewable server-side credentials.
-module.exports.shopify = { shop: SHOP, getAccessToken, graphql };
+module.exports.shopify = { shop: SHOP, getAccessToken, graphql, clientSecret: CLIENT_SECRET };
 module.exports.statusHelpers = {
   extractAdminWorkflow,
   extractApplicationMeta,
@@ -1519,4 +1519,5 @@ module.exports.statusHelpers = {
   credoStatusCheckIsDue,
   fetchCredoStatus,
 };
+
 

@@ -108,8 +108,9 @@ const reviewWriteQueues = new Map();
 const REVIEW_NAMESPACE = 'ezzy';
 const REVIEW_KEY = 'product_reviews';
 const orderTracker = require('./tracker');
-const { shop: EZZY_SHOP, getAccessToken: getEzzyAccessToken, graphql: ezzyGraphql } = orderTracker.shopify;
+const { shop: EZZY_SHOP, getAccessToken: getEzzyAccessToken, graphql: ezzyGraphql, clientSecret: ezzyShopifyClientSecret } = orderTracker.shopify;
 const { fetchPopularDraftOrderProducts } = require('./popular-products');
+const { registerProductSizeCategories } = require('./product-size-categories');
 
 
 function isEzzyStorefrontRequest(req) {
@@ -280,6 +281,13 @@ app.post('/api/reviews', async (req, res) => {
     console.error('REVIEWS POST ERROR:', error.response?.status || error.message);
     return res.status(500).json({ error: 'Review could not be saved' });
   }
+});
+
+registerProductSizeCategories({
+  app,
+  graphql: ezzyGraphql,
+  clientSecret: ezzyShopifyClientSecret,
+  callbackUrl: 'https://api.ezzy.ge/api/shopify/product-size-categories',
 });
 
 
