@@ -109,6 +109,7 @@ const REVIEW_NAMESPACE = 'ezzy';
 const REVIEW_KEY = 'product_reviews';
 const orderTracker = require('./tracker');
 const { shop: EZZY_SHOP, getAccessToken: getEzzyAccessToken, graphql: ezzyGraphql } = orderTracker.shopify;
+const { fetchPopularDraftOrderProducts } = require('./popular-products');
 
 
 function isEzzyStorefrontRequest(req) {
@@ -183,6 +184,46 @@ function summarizeReviews(reviews) {
     reviews: visible.slice().reverse()
   };
 }
+
+const POPULAR_PRODUCTS_CACHE_MS = 5 * 60 * 1000;
+let popularProductsCache = { expiresAt: 0, products: null, pending: null };
+
+async function getPopularDraftOrderProducts() {
+  if (popularProductsCache.products && Date.now() < popularProductsCache.expiresAt) {
+    return popularProductsCache.products;
+  }
+  if (popularProductsCache.pending) return popularProductsCache.pending;
+
+  popularProductsCache.pending = fetchPopularDraftOrderProducts(ezzyGraphql, {
+    limit: 8,
+    maxDraftOrders: 500,
+  }).then((products) => {
+    popularProductsCache = {
+      expiresAt: Date.now() + POPULAR_PRODUCTS_CACHE_MS,
+      products,
+      pending: null,
+    };
+    return products;
+  }).catch((error) => {
+    popularProductsCache.pending = null;
+    throw error;
+  });
+
+  return popularProductsCache.pending;
+}
+
+app.get('/api/popular-products', async (req, res) => {
+  if (!isEzzyStorefrontRequest(req)) return res.status(403).json({ error: 'Origin not allowed' });
+
+  try {
+    const products = await getPopularDraftOrderProducts();
+    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=240');
+    return res.json({ products });
+  } catch (error) {
+    console.error('POPULAR PRODUCTS ERROR:', error.response?.status || error.message);
+    return res.status(503).json({ error: 'Popular products unavailable' });
+  }
+});
 
 app.get('/api/reviews', async (req, res) => {
   if (!isEzzyStorefrontRequest(req)) return res.status(403).json({ error: 'Origin not allowed' });
@@ -3516,6 +3557,7 @@ orderTracker(app, {
 });
 
 app.listen(process.env.PORT || 3000);
+
 
 
 
