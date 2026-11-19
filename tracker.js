@@ -399,7 +399,7 @@ function extractApplicationMeta(tags, note, provider, fallbackStatus) {
       : (provider === 'KEEPZ'
         ? (keepzSuccessful ? 'success' : 'in_progress')
         : (isCourierAdvance
-          ? (keepzSuccessful ? 'success' : 'reject')
+          ? (keepzSuccessful ? 'success' : 'in_progress')
           : tbcStatusId)));
 
   return {
@@ -1232,7 +1232,6 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
         const draftNodes = draftData.draftOrders?.nodes || [];
         await recoverSuccessfulCourierAdvances(draftNodes, bankConfig);
         drafts = draftNodes
-          .filter((draft) => !isPendingCourierAdvance(draft))
           .map((draft) => {
           const provider = detectProvider(draft.tags, draft.note2);
           return {
