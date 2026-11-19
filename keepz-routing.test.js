@@ -94,7 +94,10 @@ test('courier advances stay categorized as courier while Keepz card payments rem
   assert.match(trackerSource, /COURIER-ADVANCE-PENDING/);
   assert.match(trackerSource, /matchesPhone\(draft\) && !isPendingCourierAdvance\(draft\)/);
   assert.match(trackerSource, /matchesPhone\(draft\) && !isPendingCourierAdvance\(draft\)/);
-  assert.match(trackerSource, /filter\(\(draft\) => !isPendingCourierAdvance\(draft\)\)/);
+  const adminRoute = trackerSource.slice(trackerSource.indexOf("app.get('/api/admin/orders'"), trackerSource.indexOf("app.post('/api/admin/application-workflow'"));
+  assert.doesNotMatch(adminRoute, /filter\\(\\(draft\\) => !isPendingCourierAdvance\\(draft\\)\\)/);
+  assert.match(adminRoute, /await recoverSuccessfulCourierAdvances\\(draftNodes, bankConfig\\)/);
+  assert.match(trackerSource, /keepzSuccessful \\? 'success' : 'in_progress'/);
 });
 
 test('public order tracking requires only the customer phone number', () => {
