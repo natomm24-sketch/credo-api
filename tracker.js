@@ -858,7 +858,7 @@ async function phoneHasOrders(phone) {
     graphql(`query AccountOrderExists($search: String!) { orders(first: 1, query: $search) { nodes { id } } }`, { search }),
     graphql(`query AccountDraftExists($search: String!) { draftOrders(first: 50, query: $search) { nodes { id tags } } }`, { search }).catch(() => ({ draftOrders: { nodes: [] } })),
   ]);
-  const visibleDraftExists = (drafts.draftOrders?.nodes || []).some((draft) => !isPendingCourierAdvance(draft));
+  const visibleDraftExists = Boolean(drafts.draftOrders?.nodes?.length);
   return Boolean(orders.orders?.nodes?.length || visibleDraftExists);
 }
 
@@ -924,7 +924,7 @@ async function findOrdersByPhone(phone, bankConfig) {
     }))),
   }));
   const drafts = (draftData.draftOrders?.nodes || [])
-    .filter((draft) => matchesPhone(draft) && !isPendingCourierAdvance(draft))
+    .filter(matchesPhone)
     .map((draft) => {
     const provider = detectProvider(draft.tags, draft.note2);
     return {
@@ -1103,7 +1103,7 @@ module.exports = function registerOrderTracker(app, bankConfig = {}) {
           ),
         }));
       const drafts = (draftData.draftOrders?.nodes || [])
-        .filter((draft) => matchesPhone(draft) && !isPendingCourierAdvance(draft))
+        .filter(matchesPhone)
         .map((draft) => {
           const provider = detectProvider(draft.tags, draft.note2);
           const applicationMeta = extractApplicationMeta(draft.tags, draft.note2, provider, '');
@@ -1518,5 +1518,6 @@ module.exports.statusHelpers = {
   credoStatusCheckIsDue,
   fetchCredoStatus,
 };
+
 
 
