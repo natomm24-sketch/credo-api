@@ -29,14 +29,18 @@ function productSizes(product) {
 
 function categoryTagsForProduct(product) {
   const sizes = productSizes(product);
-  const hasWomenSize = sizes.some((size) => size >= 36 && size <= 40);
-  const hasMenSize = sizes.some((size) => size >= 40);
-  const crossesRange = sizes.some((size) => size >= 36 && size < 40) && sizes.some((size) => size > 40);
-  return [
-    ...(hasWomenSize ? ['EZZY-WOMEN'] : []),
-    ...(hasMenSize ? ['EZZY-MEN'] : []),
-    ...(crossesRange ? ['EZZY-UNISEX'] : []),
-  ];
+  const hasBelow40 = sizes.some((size) => size >= 36 && size < 40);
+  const has40 = sizes.includes(40);
+  const hasAbove40 = sizes.some((size) => size > 40);
+
+  // A model spanning both sides of size 40 belongs only to Unisex.
+  if (hasBelow40 && hasAbove40) return ['EZZY-UNISEX'];
+  // Otherwise the complete size range determines one gender category.
+  if (hasBelow40) return ['EZZY-WOMEN'];
+  if (hasAbove40) return ['EZZY-MEN'];
+  // A product whose only recognised size is the shared boundary 40 fits both.
+  if (has40) return ['EZZY-WOMEN', 'EZZY-MEN'];
+  return [];
 }
 
 function existingTags(product) {
@@ -184,4 +188,3 @@ module.exports = {
   syncProductCategoryTags,
   validWebhookHmac,
 };
-

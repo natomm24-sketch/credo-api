@@ -13,11 +13,12 @@ const product = (values, tags = []) => ({
   variants: { nodes: values.map((value) => ({ title: String(value), selectedOptions: [{ name: 'ზომა', value: String(value) }] })) },
 });
 
-test('classifies women, men and cross-range unisex sizes', () => {
-  assert.deepEqual(categoryTagsForProduct(product([36, 37, 40])), ['EZZY-WOMEN', 'EZZY-MEN']);
-  assert.deepEqual(categoryTagsForProduct(product([40, 41, 44])), ['EZZY-WOMEN', 'EZZY-MEN']);
+test('classifies the full product size range into one category', () => {
+  assert.deepEqual(categoryTagsForProduct(product([36, 37, 40])), ['EZZY-WOMEN']);
+  assert.deepEqual(categoryTagsForProduct(product([40, 41, 44])), ['EZZY-MEN']);
   assert.deepEqual(categoryTagsForProduct(product([41, 42, 44])), ['EZZY-MEN']);
-  assert.deepEqual(categoryTagsForProduct(product([36, 38, 39, 41])), ['EZZY-WOMEN', 'EZZY-MEN', 'EZZY-UNISEX']);
+  assert.deepEqual(categoryTagsForProduct(product([36, 38, 39, 41])), ['EZZY-UNISEX']);
+  assert.deepEqual(categoryTagsForProduct(product([40])), ['EZZY-WOMEN', 'EZZY-MEN']);
 });
 
 test('reads numeric size values and ignores unrelated option text', () => {
@@ -32,10 +33,10 @@ test('adds and removes only managed category tags', async () => {
     variables = input;
     return { add: { userErrors: [] }, remove: { userErrors: [] } };
   };
-  const result = await syncProductCategoryTags(graphql, product([41, 42], ['Sale', 'EZZY-WOMEN']));
+  const result = await syncProductCategoryTags(graphql, product([36, 42], ['Sale', 'EZZY-WOMEN', 'EZZY-MEN']));
   assert.equal(result.changed, true);
-  assert.deepEqual(variables.add, ['EZZY-MEN']);
-  assert.deepEqual(variables.remove, ['EZZY-WOMEN']);
+  assert.deepEqual(variables.add, ['EZZY-UNISEX']);
+  assert.deepEqual(variables.remove, ['EZZY-WOMEN', 'EZZY-MEN']);
 });
 
 test('validates Shopify webhook HMAC against the raw body', () => {
@@ -45,4 +46,3 @@ test('validates Shopify webhook HMAC against the raw body', () => {
   assert.equal(validWebhookHmac(rawBody, hmac, secret), true);
   assert.equal(validWebhookHmac(rawBody, 'wrong', secret), false);
 });
-
