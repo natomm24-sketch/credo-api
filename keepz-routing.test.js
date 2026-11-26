@@ -92,12 +92,13 @@ test('courier advances stay categorized as courier while Keepz card payments rem
   assert.match(trackerSource, /მიწოდება-გადახდილია/);
   assert.match(trackerSource, /function isPendingCourierAdvance/);
   assert.match(trackerSource, /COURIER-ADVANCE-PENDING/);
-  assert.match(trackerSource, /matchesPhone\(draft\) && !isPendingCourierAdvance\(draft\)/);
-  assert.match(trackerSource, /matchesPhone\(draft\) && !isPendingCourierAdvance\(draft\)/);
+  assert.doesNotMatch(trackerSource, /matchesPhone\(draft\) && !isPendingCourierAdvance\(draft\)/);
+  assert.match(trackerSource, /\.filter\(matchesPhone\)/);
+  assert.match(trackerSource, /const visibleDraftExists = Boolean\(drafts\.draftOrders\?\.nodes\?\.length\)/);
   const adminRoute = trackerSource.slice(trackerSource.indexOf("app.get('/api/admin/orders'"), trackerSource.indexOf("app.post('/api/admin/application-workflow'"));
   assert.doesNotMatch(adminRoute, /filter\\(\\(draft\\) => !isPendingCourierAdvance\\(draft\\)\\)/);
-  assert.match(adminRoute, /await recoverSuccessfulCourierAdvances\\(draftNodes, bankConfig\\)/);
-  assert.match(trackerSource, /keepzSuccessful \\? 'success' : 'in_progress'/);
+  assert.match(adminRoute, /await recoverSuccessfulCourierAdvances\(draftNodes, bankConfig\)/);
+  assert.match(trackerSource, /keepzSuccessful \? 'success' : 'in_progress'/);
 });
 
 test('public order tracking requires only the customer phone number', () => {
@@ -147,5 +148,6 @@ test('payment credentials are loaded from the environment', () => {
 
   assert.doesNotMatch(source, /const\s+KEEPZ_PRIVATE_KEY(?:_EZZY)?\s*=\s*["'`]/);
 });
+
 
 
